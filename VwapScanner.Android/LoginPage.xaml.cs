@@ -21,7 +21,9 @@ public partial class LoginPage : ContentPage
     /// <summary>Loads Zerodha's login page; throws ZerodhaException when the API key is missing.</summary>
     public void Start() => Web.Source = new UrlWebViewSource { Url = state.LoginUrl() };
 
-    private async void OnNavigating(object? sender, WebNavigatingEventArgs e)
+    private async void OnNavigating(object? sender, WebNavigatingEventArgs e) => await Guard.Run(this, "Zerodha login", () => OnNavigatingCore(sender, e));
+
+    private async Task OnNavigatingCore(object? sender, WebNavigatingEventArgs e)
     {
         if (!e.Url.StartsWith(config.RedirectUrl, StringComparison.OrdinalIgnoreCase)) return;
         e.Cancel = true; // the phone never opens 127.0.0.1; only the request_token in the address is needed
@@ -33,23 +35,29 @@ public partial class LoginPage : ContentPage
         {
             await state.CompleteLoginAsync(new Uri(e.Url).Query, CancellationToken.None);
         }
-        catch (ZerodhaException ex) { error = ex.Message; }
-        catch (UriFormatException) { error = "Zerodha returned an unreadable redirect address. Please log in again."; }
+        catch (ZerodhaException ex) { error = ex.Message; AppLog.Error("Login", ex); }
+        catch (UriFormatException ex) { AppLog.Error("Login", ex); error = "Zerodha returned an unreadable redirect address. Please log in again."; }
         catch (OperationCanceledException) { error = "The login was cancelled."; }
-        catch (Exception ex) { error = ex.GetType().Name + ": " + ex.Message; }
+        catch (Exception ex) { AppLog.Error("Login", ex); error = ex.GetType().Name + ": " + ex.Message; }
 
         if (error is null && state.Connected)
+        {
+            AppLog.Info("Login", "Zerodha login successful.");
             await DisplayAlertAsync("Zerodha login", "Login successful. You are connected to Zerodha until 06:00 IST tomorrow.", "OK");
+        }
         else
             await DisplayAlertAsync("Zerodha login failed", error ?? "Zerodha did not return a session. Please log in again.", "OK");
         await Navigation.PopAsync();
     }
 
     /// <summary>The login page itself could not be loaded (no internet, timeout...).</summary>
-    private async void OnNavigated(object? sender, WebNavigatedEventArgs e)
+    private async void OnNavigated(object? sender, WebNavigatedEventArgs e) => await Guard.Run(this, "Zerodha login", () => OnNavigatedCore(sender, e));
+
+    private async Task OnNavigatedCore(object? sender, WebNavigatedEventArgs e)
     {
         if (handled || e.Result == WebNavigationResult.Success) return;
         handled = true;
+        AppLog.Warn("Login", $"Could not open the Zerodha login page ({e.Result}).");
         await DisplayAlertAsync("Zerodha login failed",
             $"Could not open the Zerodha login page ({e.Result}). Check the internet connection (and any VPN), then try again.", "OK");
         await Navigation.PopAsync();

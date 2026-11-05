@@ -4,6 +4,8 @@ public static class MauiProgram
 {
     public static MauiApp CreateMauiApp()
     {
+        // A forgotten background task that failed must not bring the app down.
+        TaskScheduler.UnobservedTaskException += (_, e) => { System.Diagnostics.Debug.WriteLine("[VwapScanner] " + e.Exception); AppLog.Error("Task", e.Exception); e.SetObserved(); };
         var builder = MauiApp.CreateBuilder();
         builder.UseMauiApp<App>();
 

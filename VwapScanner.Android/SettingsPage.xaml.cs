@@ -136,6 +136,11 @@ public partial class SettingsPage : ContentPage
     protected override async void OnAppearing()
     {
         base.OnAppearing();
+        await Guard.Run(this, "Settings", AppearingCore);
+    }
+
+    private async Task AppearingCore()
+    {
         await config.LoadSecretsAsync();
         loading = true;
         KeyEntry.Text = config.ApiKey;
@@ -207,7 +212,9 @@ public partial class SettingsPage : ContentPage
     private static decimal Dec(Dictionary<string, string> v, string key) => decimal.Parse(v[key], CultureInfo.InvariantCulture);
     private static TimeOnly Tm(Dictionary<string, string> v, string key) => TimeOnly.ParseExact(v[key], ["HH:mm", "HH:mm:ss"], CultureInfo.InvariantCulture);
 
-    private async void OnSave(object? sender, EventArgs e)
+    private async void OnSave(object? sender, EventArgs e) => await Guard.Run(this, "Settings", () => OnSaveCore(sender, e));
+
+    private async Task OnSaveCore(object? sender, EventArgs e)
     {
         var values = new List<(SettingDef Def, string Value)>();
         if (!Revalidate(values))
@@ -228,20 +235,36 @@ public partial class SettingsPage : ContentPage
     private bool Toggled(string key) => inputs.FirstOrDefault(kv => kv.Key.Key == key).Value is Switch s && s.IsToggled;
 
     /// <summary>Shows the reminder now with the sound and vibration currently selected on this screen (saved or not).</summary>
-    private async void OnTestReminder(object? sender, EventArgs e)
+    private async void OnTestReminder(object? sender, EventArgs e) => await Guard.Run(this, "Settings", () => OnTestReminderCore(sender, e));
+
+    private async Task OnTestReminderCore(object? sender, EventArgs e)
     {
         await notifier.EnsurePermissionAsync();
         notifier.Remind("Start your VWAP scan (test)", "This is how the daily reminder looks and sounds. Tap to open the app.", Toggled("App:ReminderSound"), Toggled("App:ReminderVibrate"));
     }
 
     /// <summary>Saves the rows currently in the grids the same way the market-close save does, so the feature can be tried without waiting for 15:30.</summary>
-    private async void OnTestSaveCsv(object? sender, EventArgs e)
+    private async void OnTestSaveCsv(object? sender, EventArgs e) => await Guard.Run(this, "Settings", () => OnTestSaveCsvCore(sender, e));
+
+    private async Task OnTestSaveCsvCore(object? sender, EventArgs e)
     {
         await coordinator.SaveDailyCsvIfDueAsync(force: true);
         await DisplayAlertAsync("Test save", coordinator.LastSaveMessage, "OK");
     }
 
-    private async void OnReset(object? sender, EventArgs e)
+    /// <summary>Sends today's log file (Zerodha/Kite errors and key events) through the share sheet.</summary>
+    private async void OnShareLog(object? sender, EventArgs e) => await Guard.Run(this, "Settings", async () =>
+    {
+        var file = AppLog.TodayFile;
+        if (!File.Exists(file)) { await DisplayAlertAsync("Log file", "Nothing has been logged today - no errors.", "OK"); return; }
+        var copy = Path.Combine(FileSystem.CacheDirectory, Path.GetFileName(file)); // share from the cache folder, never from the live log
+        File.Copy(file, copy, overwrite: true);
+        await Share.Default.RequestAsync(new ShareFileRequest { Title = Path.GetFileName(file), File = new ShareFile(copy, "text/plain") });
+    });
+
+    private async void OnReset(object? sender, EventArgs e) => await Guard.Run(this, "Settings", () => OnResetCore(sender, e));
+
+    private async Task OnResetCore(object? sender, EventArgs e)
     {
         if (!await DisplayAlertAsync("Settings", "Reset strategy, portfolio and auto-refresh settings to the values shipped with the app? The API key and secret are kept.", "Reset", "Cancel")) return;
         config.ResetSettings();

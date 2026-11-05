@@ -18,6 +18,7 @@
             <VerticalStackLayout x:Name="Fields" Spacing="8" />
 
             <Button Text="Send test reminder" Clicked="OnTestReminder" Margin="0,16,0,0" />
+            <Button Text="Share today's log file" Clicked="OnShareLog" />
             <Button Text="Test: save CSV files now" Clicked="OnTestSaveCsv" />
             <Button x:Name="SaveButton" Text="Save" Clicked="OnSave" />
             <Button Text="Reset settings to defaults" Clicked="OnReset" />

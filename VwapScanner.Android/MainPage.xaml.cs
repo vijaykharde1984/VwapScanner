@@ -35,6 +35,11 @@ public partial class MainPage : ContentPage
     protected override async void OnAppearing()
     {
         base.OnAppearing();
+        await Guard.Run(this, "VWAP Scanner", AppearingCore);
+    }
+
+    private async Task AppearingCore()
+    {
         coordinator.Changed += OnCoordinatorChanged;
         reminders.Schedule(); // keep the daily reminder alarm in place (alarms are lost after a reboot or an app update)
         if (restoredRevision != config.Revision)
@@ -46,7 +51,7 @@ public partial class MainPage : ContentPage
                 await config.LoadSecretsAsync();
                 await Task.Run(() => state.RestoreAsync(CancellationToken.None));
             }
-            catch (ZerodhaException e) { StatusLabel.Text = "Could not check the saved Zerodha token: " + e.Message; return; }
+            catch (ZerodhaException e) { AppLog.Error("Session", e); StatusLabel.Text = "Could not check the saved Zerodha token: " + e.Message; return; }
         }
         await coordinator.ResumeIfEnabledAsync(interactive: true); // auto-refresh was on when the app was closed or killed
         await coordinator.AutoStartIfDefaultAsync();               // otherwise start it by default (setting "Start auto-refresh automatically")
@@ -113,10 +118,14 @@ public partial class MainPage : ContentPage
         ExportPortfolioButton.IsEnabled = positionRows > 0;
     }
 
-    private async void OnSettings(object? sender, EventArgs e) =>
+    private async void OnSettings(object? sender, EventArgs e) => await Guard.Run(this, "VWAP Scanner", () => OnSettingsCore(sender, e));
+
+    private async Task OnSettingsCore(object? sender, EventArgs e) =>
         await Navigation.PushAsync(services.GetRequiredService<SettingsPage>());
 
-    private async void OnLogin(object? sender, EventArgs e)
+    private async void OnLogin(object? sender, EventArgs e) => await Guard.Run(this, "VWAP Scanner", () => OnLoginCore(sender, e));
+
+    private async Task OnLoginCore(object? sender, EventArgs e)
     {
         try
         {
@@ -125,16 +134,20 @@ public partial class MainPage : ContentPage
             login.Start(); // throws when the API key is not set
             await Navigation.PushAsync(login);
         }
-        catch (ZerodhaException ex) { await DisplayAlertAsync("Zerodha login", ex.Message + "\nOpen Settings to enter the key.", "OK"); }
+        catch (ZerodhaException ex) { AppLog.Error("Login", ex); await DisplayAlertAsync("Zerodha login", ex.Message + "\nOpen Settings to enter the key.", "OK"); }
     }
 
-    private async void OnScan(object? sender, EventArgs e)
+    private async void OnScan(object? sender, EventArgs e) => await Guard.Run(this, "VWAP Scanner", () => OnScanCore(sender, e));
+
+    private async Task OnScanCore(object? sender, EventArgs e)
     {
         if (coordinator.Busy) { coordinator.CancelScan(); return; } // second tap cancels the running scan
         await coordinator.ScanOnceAsync(auto: false);
     }
 
-    private async void OnAutoToggled(object? sender, ToggledEventArgs e)
+    private async void OnAutoToggled(object? sender, ToggledEventArgs e) => await Guard.Run(this, "VWAP Scanner", () => OnAutoToggledCore(sender, e));
+
+    private async Task OnAutoToggledCore(object? sender, ToggledEventArgs e)
     {
         if (updatingSwitch) return;
         if (e.Value)
@@ -160,9 +173,13 @@ public partial class MainPage : ContentPage
 
     private string Stamp() => $"{coordinator.Last?.Scan.Date.Replace("-", "") ?? DateTime.Now.ToString("yyyyMMdd", CultureInfo.InvariantCulture)}-{DateTime.Now:HHmmss}";
 
-    private async void OnExportSignals(object? sender, EventArgs e) => await ExportAsync(SignalsFile(Stamp()));
+    private async void OnExportSignals(object? sender, EventArgs e) => await Guard.Run(this, "VWAP Scanner", () => OnExportSignalsCore(sender, e));
 
-    private async void OnExportPortfolio(object? sender, EventArgs e) => await ExportAsync(PortfolioFile(Stamp()));
+    private async Task OnExportSignalsCore(object? sender, EventArgs e) => await ExportAsync(SignalsFile(Stamp()));
+
+    private async void OnExportPortfolio(object? sender, EventArgs e) => await Guard.Run(this, "VWAP Scanner", () => OnExportPortfolioCore(sender, e));
+
+    private async Task OnExportPortfolioCore(object? sender, EventArgs e) => await ExportAsync(PortfolioFile(Stamp()));
 
     /// <summary>Saves the file to Downloads\VwapScanner; where Android cannot do that, offers it through the share sheet instead.</summary>
     private async Task ExportAsync((string Name, string Csv, int Rows)? file)
@@ -184,7 +201,9 @@ public partial class MainPage : ContentPage
     }
 
     /// <summary>Both grids as CSV files through the Android share sheet (WhatsApp, e-mail, Drive...).</summary>
-    private async void OnShare(object? sender, EventArgs e)
+    private async void OnShare(object? sender, EventArgs e) => await Guard.Run(this, "VWAP Scanner", () => OnShareCore(sender, e));
+
+    private async Task OnShareCore(object? sender, EventArgs e)
     {
         try
         {

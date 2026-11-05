@@ -46,9 +46,10 @@ public class ReminderReceiver : BroadcastReceiver
             if (config is not null && notifier is not null && !(coordinator?.IsAutoActiveToday ?? false))
                 notifier.Remind("Time to start your VWAP scan", "Open the app to start auto-refresh and scan for signals.", config.ReminderSound, config.ReminderVibrate);
         }
+        catch (Exception) { /* a failed reminder must not crash the app; the next one is scheduled below */ }
         finally
         {
-            services?.GetService<IReminderScheduler>()?.Schedule();
+            try { services?.GetService<IReminderScheduler>()?.Schedule(); } catch (Exception) { }
         }
     }
 }
@@ -58,6 +59,9 @@ public class ReminderReceiver : BroadcastReceiver
 [IntentFilter(new[] { Intent.ActionBootCompleted, Intent.ActionMyPackageReplaced })]
 public class BootReceiver : BroadcastReceiver
 {
-    public override void OnReceive(Context? context, Intent? intent) =>
-        IPlatformApplication.Current?.Services.GetService<IReminderScheduler>()?.Schedule();
+    public override void OnReceive(Context? context, Intent? intent)
+    {
+        try { IPlatformApplication.Current?.Services.GetService<IReminderScheduler>()?.Schedule(); }
+        catch (Exception) { /* retried whenever the app opens */ }
+    }
 }

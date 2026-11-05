@@ -145,10 +145,10 @@ public sealed class ScanCoordinator(ApiState state, AppConfig config, INotifier 
             return true;
         }
         catch (OperationCanceledException) { Update(ct.IsCancellationRequested ? "Stopped." : "Scan cancelled."); return false; }
-        catch (ZerodhaAuthException e) { Update(e.Message); return false; }
-        catch (ZerodhaException e) { Update(e.Message); return false; }
-        catch (ConfigurationException e) { Update("Configuration: " + e.Message); return false; }
-        catch (Exception e) { Update(e.GetType().Name + ": " + e.Message); return false; }
+        catch (ZerodhaAuthException e) { AppLog.Error("Scan", e); Update(e.Message); return false; }
+        catch (ZerodhaException e) { AppLog.Error("Scan", e); Update(e.Message); return false; }
+        catch (ConfigurationException e) { AppLog.Error("Scan", e); Update("Configuration: " + e.Message); return false; }
+        catch (Exception e) { AppLog.Error("Scan", e); Update(e.GetType().Name + ": " + e.Message); return false; }
         finally
         {
             lock (sync) { Busy = false; scanCts = null; }
@@ -263,7 +263,7 @@ public sealed class ScanCoordinator(ApiState state, AppConfig config, INotifier 
             await config.LoadSecretsAsync();
             if (!state.Connected) await Task.Run(() => state.RestoreAsync(CancellationToken.None));
         }
-        catch (ZerodhaException e) { Update("Could not resume auto-refresh: " + e.Message); return false; }
+        catch (ZerodhaException e) { AppLog.Error("Resume", e); Update("Could not resume auto-refresh: " + e.Message); return false; }
         if (!state.Connected)
         {
             Preferences.Default.Remove(AutoKey);
@@ -300,6 +300,7 @@ public sealed class ScanCoordinator(ApiState state, AppConfig config, INotifier 
                 if (!state.Connected)
                 {
                     ending = "Zerodha session ended - log in again.";
+                    AppLog.Warn("Auto", "Zerodha session ended during auto-refresh.");
                     if (config.Notify) notifier.Notify(2, "VWAP Scanner", "The Zerodha session ended. Open the app and log in again.");
                     break;
                 }
@@ -316,10 +317,12 @@ public sealed class ScanCoordinator(ApiState state, AppConfig config, INotifier 
             }
         }
         catch (OperationCanceledException) { ending = "Auto-refresh stopped."; }
+        catch (Exception e) { AppLog.Error("Auto", e); ending = "Auto-refresh stopped by an unexpected error: " + e.Message; } // the loop must never end silently or take the app down
         finally
         {
             if (ReferenceEquals(loopCts, cts)) { loopCts = null; Preferences.Default.Remove(AutoKey); } // ended on purpose: do not resume
             cts.Dispose();
+            AppLog.Info("Auto", "Auto-refresh ended: " + ending);
             Update(ending);
             if (ending == MarketClosedText) await SaveDailyCsvIfDueAsync(); // before the keep-alive service is released
             keepAlive.Stop();
@@ -363,11 +366,13 @@ public sealed class ScanCoordinator(ApiState state, AppConfig config, INotifier 
             if (!force) Preferences.Default.Set(CsvSavedKey, today);
             var message = $"{(force ? "Test: saved" : "Market closed. Saved")} {signals.Count} signal row(s) and {positions.Count} portfolio row(s) to Download/VwapScanner.";
             LastSaveMessage = message;
+            AppLog.Info("Csv", message);
             if (!force) { Update(message); if (config.Notify) notifier.Notify(4, "VWAP Scanner", message); }
             return true;
         }
         catch (Exception e)
         {
+            AppLog.Error("Csv", e);
             LastSaveMessage = "Could not save the CSV files: " + e.Message;
             if (!force) Update("Market closed. " + LastSaveMessage);
             return false;
