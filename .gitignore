@@ -1,0 +1,11 @@
+# Build output
+bin/
+obj/
+.vs/
+
+# Secrets / local config
+.kite_token.json
+appsettings.Local.json
+
+# Generated scanner output
+output/

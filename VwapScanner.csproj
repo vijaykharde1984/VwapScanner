@@ -1,0 +1,20 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+  <!-- Standalone VWAP-only scanner and web API extracted from GptTrading's ScalpVwap strategy. No dependency on the GptTrading repository. -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <AssemblyName>VwapScanner</AssemblyName>
+    <RootNamespace>VwapScanner</RootNamespace>
+  </PropertyGroup>
+  <ItemGroup>
+    <!-- Official Zerodha Kite Connect .NET client (same package and version as GptTrading). -->
+    <PackageReference Include="Tech.Zerodha.KiteConnect" Version="5.0.0" />
+  </ItemGroup>
+  <ItemGroup>
+    <Content Include="universes\*.txt" CopyToOutputDirectory="PreserveNewest" />
+    <!-- Secrets and saved sessions stay out of the build output. -->
+    <Content Remove=".kite_token*.json;appsettings.Local.json" />
+    <None Remove=".kite_token*.json;appsettings.Local.json" />
+  </ItemGroup>
+</Project>
