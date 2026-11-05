@@ -92,6 +92,60 @@ public sealed class ApiState(IConfiguration config, string contentRoot)
 
     public sealed record MasterFile(string Date, Dictionary<string, int> Items);
 
+    private static readonly TimeSpan Ist = TimeSpan.FromHours(5.5);
+
+    /// <summary>Open, high, low and close of the day from the completed candles that ended by <paramref name="asOf"/>; null when there are none.</summary>
+    private static DayOhlc? Summarize(List<Candle> have, DateOnly day, DateTimeOffset asOf)
+    {
+        var open = new DateTimeOffset(day.ToDateTime(new TimeOnly(9, 15)), Ist);
+        var bars = have.Where(c => c.Time >= open && c.Time.AddMinutes(1) <= asOf).OrderBy(c => c.Time).ToList();
+        return bars.Count == 0 ? null
+            : new DayOhlc(bars[0].Open, bars.Max(c => c.High), bars.Min(c => c.Low), bars[^1].Close, bars[^1].Time.AddMinutes(1).ToString("HH:mm", CultureInfo.InvariantCulture));
+    }
+
+    /// <summary>The day's open/high/low/close of every signalled stock as of the scan time. It reads the candles the scan just downloaded: no extra Kite calls.</summary>
+    private Dictionary<string, DayOhlc> OhlcOfSignals(ScanResult result)
+    {
+        var map = new Dictionary<string, DayOhlc>(StringComparer.OrdinalIgnoreCase);
+        if (master is null || result.Signals.Count == 0) return map;
+        var day = DateOnly.ParseExact(result.Date, "yyyy-MM-dd", CultureInfo.InvariantCulture);
+        var asOf = new DateTimeOffset(day.ToDateTime(TimeOnly.ParseExact(result.AsOf, "HH:mm", CultureInfo.InvariantCulture)), Ist);
+        foreach (var symbol in result.Signals.Select(x => x.Symbol).Distinct(StringComparer.OrdinalIgnoreCase))
+            if (master.TryGetValue(symbol, out var token) && Summarize(candles.For(token, day), day, asOf) is { } ohlc)
+                map[symbol] = ohlc;
+        return map;
+    }
+
+    /// <summary>
+    /// The final open/high/low/close of the day for the given stocks, for use after the market has closed (15:30 IST): any candles still missing
+    /// from the cache are downloaded, so it also works after the app was restarted.
+    /// </summary>
+    public async Task<Dictionary<string, DayOhlc>> FinalOhlcAsync(IEnumerable<string> symbols, DateOnly day, CancellationToken ct)
+    {
+        var map = new Dictionary<string, DayOhlc>(StringComparer.OrdinalIgnoreCase);
+        var open = new DateTimeOffset(day.ToDateTime(new TimeOnly(9, 15)), Ist);
+        var close = new DateTimeOffset(day.ToDateTime(new TimeOnly(15, 30)), Ist);
+        await gate.WaitAsync(ct);
+        try
+        {
+            if (api is null) throw new ZerodhaAuthException("Not connected to Zerodha.");
+            master ??= await LoadMasterAsync(api, ct);
+            foreach (var symbol in symbols.Distinct(StringComparer.OrdinalIgnoreCase))
+            {
+                if (!master.TryGetValue(symbol, out var token)) continue;
+                var have = candles.For(token, day);
+                var from = have.Count > 0 ? have[^1].Time.AddMinutes(1) : open;
+                if (from < close)
+                    foreach (var c in (await api.MinuteCandlesAsync(token, from, close, ct)).Where(c => c.Time >= open && c.Time.AddMinutes(1) <= close).OrderBy(c => c.Time))
+                        if (have.Count == 0 || c.Time > have[^1].Time) have.Add(c);
+                if (Summarize(have, day, close) is { } ohlc) map[symbol] = ohlc;
+            }
+            return map;
+        }
+        catch (ZerodhaAuthException) { Disconnect(); throw; }
+        finally { gate.Release(); }
+    }
+
     /// <summary>One run of the whole business logic with the current settings: VWAP scan, then portfolio optimization of the signals.</summary>
     /// <param name="minLookback">Auto-refresh passes its interval so the candles between two scans are still checked.</param>
     public async Task<RunResult> RunAsync(CancellationToken ct, Action<string>? progress = null, int minLookback = 0)
@@ -119,14 +173,14 @@ public sealed class ApiState(IConfiguration config, string contentRoot)
             master ??= await LoadMasterAsync(api, ct);
             var result = await new Scanner(api, master, candles).ScanAsync(symbols, request, ct, progress);
             var plan = PortfolioOptimizer.Optimize(result.Signals, limits);
-            return new RunResult("ScalpVwap", scan.Symbols.Count > 0 ? "custom symbols" : scan.Universe, result, plan);
+            return new RunResult("ScalpVwap", scan.Symbols.Count > 0 ? "custom symbols" : scan.Universe, result, plan, OhlcOfSignals(result));
         }
         catch (ZerodhaAuthException) { Disconnect(); throw; }
         finally { gate.Release(); }
     }
 }
 
-/// <summary>Typed result of one run (the web API returns the same data as JSON).</summary>
-public sealed record RunResult(string Strategy, string Universe, ScanResult Scan, PortfolioPlan Plan);
+/// <summary>Typed result of one run (the web API returns the same data as JSON). <paramref name="Ohlc"/>: day open/high/low/close per signalled stock, as of the scan time.</summary>
+public sealed record RunResult(string Strategy, string Universe, ScanResult Scan, PortfolioPlan Plan, IReadOnlyDictionary<string, DayOhlc> Ohlc);
 
 public sealed class ConfigurationException(string message) : Exception(message);

@@ -15,8 +15,8 @@ public partial class MainPage : ContentPage
     private bool updatingSwitch;
     private RunResult? shown;
 
-    private readonly ResultTable signalsTable = new(SignalHeaders, [110, 110, 200, 90, 90, 100, 80, 120, 80, 90, 90]);
-    private readonly ResultTable portfolioTable = new(PositionHeaders, [90, 110, 110, 200, 90, 90, 90, 90, 80, 100, 120, 130, 140, 160, 80]);
+    private readonly ResultTable signalsTable = new(SignalHeaders, [110, 110, 200, 90, 90, 100, 80, 120, 80, 90, 90, 90, 90, 90, 90, 90]);
+    private readonly ResultTable portfolioTable = new(PositionHeaders, [90, 110, 110, 200, 90, 90, 90, 90, 80, 100, 120, 130, 140, 160, 80, 90, 90, 90, 90, 90, 130]);
     private int historyEpoch = -1, signalRows, positionRows;
 
     public MainPage(ApiState state, AppConfig config, ScanCoordinator coordinator, IFileSaver saver, IReminderScheduler reminders, IServiceProvider services)
@@ -55,7 +55,7 @@ public partial class MainPage : ContentPage
         }
         await coordinator.ResumeIfEnabledAsync(interactive: true); // auto-refresh was on when the app was closed or killed
         await coordinator.AutoStartIfDefaultAsync();               // otherwise start it by default (setting "Start auto-refresh automatically")
-        await coordinator.SaveDailyCsvIfDueAsync();                // after the close: save today's CSV files if that has not happened yet
+        await coordinator.FinalizeDayAsync();                       // after the close: final open/high/low/close, then save today's CSV files if that has not happened yet
         Refresh();
     }
 
@@ -107,15 +107,38 @@ public partial class MainPage : ContentPage
         var chunk = coordinator.TakeHistory(historyEpoch, signalRows, positionRows);
         if (chunk.Reset) { signalsTable.Clear(); portfolioTable.Clear(); }
         historyEpoch = chunk.Epoch;
-        if (chunk.Signals.Count > 0) signalsTable.Append(chunk.Signals.Select(SignalCells));
-        if (chunk.Positions.Count > 0) portfolioTable.Append(chunk.Positions.Select(x => PositionCells(x.At, x.Position)));
+        if (chunk.Signals.Count > 0) signalsTable.Append(chunk.Signals.Select(x => SignalCells(x, coordinator.OhlcFor(x))));
+        if (chunk.Positions.Count > 0) portfolioTable.Append(chunk.Positions.Select(x => PositionCells(x.At, x.Position, coordinator.OhlcFor(x.Position))));
         signalRows = chunk.SignalTotal;
         positionRows = chunk.PositionTotal;
         SignalsGridHeader.Text = $"Signals grid ({signalRows} row(s) today)";
         PortfolioGridHeader.Text = $"Portfolio grid ({positionRows} row(s) today)";
+        ShowTotals();
         ShareButton.IsVisible = signalRows > 0 || positionRows > 0;
         ExportSignalsButton.IsEnabled = signalRows > 0;
         ExportPortfolioButton.IsEnabled = positionRows > 0;
+    }
+
+    /// <summary>The totals bar under the portfolio grid: total investment (sum of price x quantity) and total profit / loss. Screen only, never in the CSV files.</summary>
+    private void ShowTotals()
+    {
+        var t = coordinator.PortfolioTotals();
+        PortfolioTotalsBar.IsVisible = t.Rows > 0;
+        if (t.Rows == 0) return;
+        InvestmentTotalLabel.Text = $"Total investment (price x quantity): INR {t.Invested.ToString("N2", CultureInfo.InvariantCulture)}  ({t.Rows} row(s))";
+        if (t.PricedRows == 0)
+        {
+            ProfitLossTotalLabel.Text = "Total profit / loss: not available yet";
+            ProfitLossTotalLabel.TextColor = null;
+            TotalsNoteLabel.Text = "Prices for the profit / loss appear after the next scan.";
+            return;
+        }
+        var sign = t.ProfitLoss > 0 ? "+" : "";
+        ProfitLossTotalLabel.Text = $"Total profit / loss: INR {sign}{t.ProfitLoss.ToString("N2", CultureInfo.InvariantCulture)}";
+        ProfitLossTotalLabel.TextColor = t.ProfitLoss > 0 ? Colors.Green : t.ProfitLoss < 0 ? Colors.Red : null;
+        TotalsNoteLabel.Text = (t.AsOf == "15:30" ? "At the day's close (15:30)" : $"Marked to the latest close ({t.AsOf})") +
+            ": sum of (close - price) x quantity, before brokerage, taxes and slippage." +
+            (t.PricedRows < t.Rows ? $" {t.Rows - t.PricedRows} row(s) without a close are left out." : "");
     }
 
     private async void OnSettings(object? sender, EventArgs e) => await Guard.Run(this, "VWAP Scanner", () => OnSettingsCore(sender, e));
@@ -161,13 +184,13 @@ public partial class MainPage : ContentPage
 
     private (string Name, string Csv, int Rows)? SignalsFile(string stamp)
     {
-        var rows = coordinator.ExportSignals().Select(SignalCells).ToList();
+        var rows = coordinator.ExportSignals().Select(x => SignalCells(x, coordinator.OhlcFor(x))).ToList();
         return rows.Count == 0 ? null : ($"vwap-signals-{stamp}.csv", ToCsv(SignalHeaders, rows), rows.Count);
     }
 
     private (string Name, string Csv, int Rows)? PortfolioFile(string stamp)
     {
-        var rows = coordinator.ExportPositions().Select(x => PositionCells(x.At, x.Position)).ToList();
+        var rows = coordinator.ExportPositions().Select(x => PositionCells(x.At, x.Position, coordinator.OhlcFor(x.Position))).ToList();
         return rows.Count == 0 ? null : ($"vwap-portfolio-{stamp}.csv", ToCsv(PositionHeaders, rows), rows.Count);
     }
 

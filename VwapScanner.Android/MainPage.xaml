@@ -74,6 +74,12 @@
                 <Button x:Name="ExportPortfolioButton" Grid.Column="1" Text="Export CSV" Clicked="OnExportPortfolio" IsEnabled="False" />
             </Grid>
             <ContentView x:Name="PortfolioGridHost" />
+            <!-- Totals of the portfolio grid. Shown on screen only: they are never part of the CSV files. -->
+            <VerticalStackLayout x:Name="PortfolioTotalsBar" IsVisible="False" Spacing="2" Padding="8,6" BackgroundColor="#40808080">
+                <Label x:Name="InvestmentTotalLabel" FontAttributes="Bold" FontSize="14" />
+                <Label x:Name="ProfitLossTotalLabel" FontAttributes="Bold" FontSize="14" />
+                <Label x:Name="TotalsNoteLabel" FontSize="11" />
+            </VerticalStackLayout>
         </VerticalStackLayout>
     </ScrollView>
 </ContentPage>

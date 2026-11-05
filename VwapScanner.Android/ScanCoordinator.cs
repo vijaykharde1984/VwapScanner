@@ -6,6 +6,10 @@ namespace VwapScanner.Mobile;
 public sealed record HistoryChunk(int Epoch, bool Reset, IReadOnlyList<VwapSignal> Signals,
     IReadOnlyList<(DateTimeOffset At, PortfolioPosition Position)> Positions, int SignalTotal, int PositionTotal);
 
+/// <summary>Totals shown under the portfolio grid (never written to CSV). Invested = sum of price x quantity of all rows; ProfitLoss = sum of (latest close - price) x quantity
+/// over the rows whose stock has a known close (PricedRows); AsOf = the time of those closes (HH:mm, "15:30" once the day is final).</summary>
+public sealed record PortfolioTotals(int Rows, decimal Invested, decimal ProfitLoss, int PricedRows, string? AsOf);
+
 /// <summary>Shows Android notifications (implemented in Platforms/Android).</summary>
 public interface INotifier
 {
@@ -65,7 +69,44 @@ public sealed class ScanCoordinator(ApiState state, AppConfig config, INotifier 
     private static string IstToday() => DateOnly.FromDateTime(DateTimeOffset.UtcNow.ToOffset(Ist).DateTime).ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
 
     private sealed record HistoryPosition(DateTimeOffset At, PortfolioPosition Position);
-    private sealed record HistoryFile(string Day, List<VwapSignal> Signals, List<HistoryPosition> Positions, List<string> Seen, List<string> PositionSeen);
+    private sealed record HistoryFile(string Day, List<VwapSignal> Signals, List<HistoryPosition> Positions, List<string> Seen, List<string> PositionSeen,
+        Dictionary<string, DayOhlc>? Ohlc = null);
+
+    // Day open/high/low/close of each row (signal key / position key), as of the scan that found it; replaced by the final values after the close.
+    private readonly Dictionary<string, DayOhlc> ohlcByRow = [];
+    private const string OhlcFinalKey = "ohlc_final_date";
+
+    private static string PositionKey(PortfolioPosition p) =>
+        $"{p.Symbol}|{p.BarTime.ToString("O", CultureInfo.InvariantCulture)}|{p.Quantity}|{p.Price.ToString(CultureInfo.InvariantCulture)}";
+
+    /// <summary>
+    /// Totals of every portfolio row of today. Profit/loss is gross (no brokerage, taxes or slippage) and marks each position to the latest close known for its stock,
+    /// so rows found at different times are valued at the same price; after the market closes that price is the day's close.
+    /// </summary>
+    public PortfolioTotals PortfolioTotals()
+    {
+        EnsureHistory();
+        lock (historyLock)
+        {
+            var latest = new Dictionary<string, DayOhlc>(StringComparer.OrdinalIgnoreCase);
+            foreach (var (_, p) in positionHistory)
+                if (ohlcByRow.GetValueOrDefault(PositionKey(p)) is { } o
+                    && (!latest.TryGetValue(p.Symbol, out var best) || string.CompareOrdinal(o.AsOf, best.AsOf) > 0))
+                    latest[p.Symbol] = o;
+            decimal invested = 0, pnl = 0; var priced = 0;
+            foreach (var (_, p) in positionHistory)
+            {
+                invested += p.Price * p.Quantity;
+                if (!latest.TryGetValue(p.Symbol, out var o)) continue;
+                pnl += (o.Close - p.Price) * p.Quantity;
+                priced++;
+            }
+            return new(positionHistory.Count, invested, pnl, priced, latest.Count == 0 ? null : latest.Values.Max(x => x.AsOf));
+        }
+    }
+
+    public DayOhlc? OhlcFor(VwapSignal s) { lock (historyLock) return ohlcByRow.GetValueOrDefault(Key(s)); }
+    public DayOhlc? OhlcFor(PortfolioPosition p) { lock (historyLock) return ohlcByRow.GetValueOrDefault(PositionKey(p)); }
 
     /// <summary>Loads today's grid rows saved by an earlier run of the app (once), so a restart does not lose them.</summary>
     private void EnsureHistory()
@@ -84,6 +125,7 @@ public sealed class ScanCoordinator(ApiState state, AppConfig config, INotifier 
                 positionSeen.UnionWith(file.PositionSeen);
                 signalHistory.AddRange(file.Signals);
                 positionHistory.AddRange(file.Positions.Select(p => (p.At, p.Position)));
+                if (file.Ohlc is not null) foreach (var (k, v) in file.Ohlc) ohlcByRow[k] = v;
                 historyEpoch++;
             }
             catch (Exception e) when (e is IOException or JsonException or UnauthorizedAccessException) { /* start with empty grids */ }
@@ -94,7 +136,8 @@ public sealed class ScanCoordinator(ApiState state, AppConfig config, INotifier 
     {
         HistoryFile snapshot;
         lock (historyLock)
-            snapshot = new(seenDay, [.. signalHistory], [.. positionHistory.Select(x => new HistoryPosition(x.At, x.Position))], [.. seen], [.. positionSeen]);
+            snapshot = new(seenDay, [.. signalHistory], [.. positionHistory.Select(x => new HistoryPosition(x.At, x.Position))], [.. seen], [.. positionSeen],
+                new Dictionary<string, DayOhlc>(ohlcByRow));
         try
         {
             var temp = HistoryPath + ".tmp";
@@ -185,16 +228,21 @@ public sealed class ScanCoordinator(ApiState state, AppConfig config, INotifier 
         if (r.Scan.Date != seenDay)
         {
             seen.Clear(); seenDay = r.Scan.Date;
-            lock (historyLock) { signalHistory.Clear(); positionHistory.Clear(); positionSeen.Clear(); historyEpoch++; }
+            lock (historyLock) { signalHistory.Clear(); positionHistory.Clear(); positionSeen.Clear(); ohlcByRow.Clear(); historyEpoch++; }
         }
         var fresh = r.Scan.Signals.Where(s => seen.Add(Key(s))).ToList();
         lock (historyLock)
         {
             // Only results that are not already in the grid: a signal is identified by stock + candle, a position by stock + candle + quantity + price.
             signalHistory.AddRange(fresh.OrderBy(s => s.BarTime).ThenByDescending(s => s.Score));
+            foreach (var s in fresh)
+                if (r.Ohlc.TryGetValue(s.Symbol, out var o)) ohlcByRow[Key(s)] = o;
             foreach (var p in r.Plan.Positions)
-                if (positionSeen.Add($"{p.Symbol}|{p.BarTime.ToString("O", CultureInfo.InvariantCulture)}|{p.Quantity}|{p.Price.ToString(CultureInfo.InvariantCulture)}"))
+                if (positionSeen.Add(PositionKey(p)))
+                {
                     positionHistory.Add((DateTimeOffset.Now, p));
+                    if (r.Ohlc.TryGetValue(p.Symbol, out var o)) ohlcByRow[PositionKey(p)] = o;
+                }
         }
         SaveHistory();
         NewKeys = fresh.Select(Key).ToHashSet();
@@ -324,7 +372,7 @@ public sealed class ScanCoordinator(ApiState state, AppConfig config, INotifier 
             cts.Dispose();
             AppLog.Info("Auto", "Auto-refresh ended: " + ending);
             Update(ending);
-            if (ending == MarketClosedText) await SaveDailyCsvIfDueAsync(); // before the keep-alive service is released
+            if (ending == MarketClosedText) await FinalizeDayAsync(); // before the keep-alive service is released
             keepAlive.Stop();
         }
     }
@@ -333,6 +381,51 @@ public sealed class ScanCoordinator(ApiState state, AppConfig config, INotifier 
     /// After the close, saves today's signals and portfolio rows as CSV files (Download/VwapScanner), once per day. Called when auto-refresh ends at the close,
     /// and when the app is opened after the close (in case it was not running then). Nothing is saved for a day without results.
     /// </summary>
+    /// <summary>After the close: updates open/high/low/close of every row of today with the day's final values (grids and CSV), then saves the CSV files.</summary>
+    public async Task FinalizeDayAsync()
+    {
+        await UpdateFinalOhlcAsync();
+        await SaveDailyCsvIfDueAsync();
+    }
+
+    /// <summary>Replaces the open/high/low/close stored with today's rows by the final values of the day. Once per day; retried at the next call when Zerodha could not be reached.</summary>
+    public async Task<bool> UpdateFinalOhlcAsync()
+    {
+        if (config.Replaying) return false;
+        var now = DateTimeOffset.UtcNow.ToOffset(Ist);
+        if (now.DayOfWeek is DayOfWeek.Saturday or DayOfWeek.Sunday || now.TimeOfDay < MarketClose) return false;
+        var today = IstToday();
+        if (Preferences.Default.Get(OhlcFinalKey, "") == today || !state.Connected) return false;
+        EnsureHistory();
+        string[] symbols;
+        lock (historyLock)
+        {
+            if (seenDay != today) return false;
+            symbols = [.. signalHistory.Select(s => s.Symbol).Concat(positionHistory.Select(p => p.Position.Symbol)).Distinct(StringComparer.OrdinalIgnoreCase)];
+        }
+        if (symbols.Length == 0) return false;
+        try
+        {
+            var final = await state.FinalOhlcAsync(symbols, DateOnly.ParseExact(today, "yyyy-MM-dd", CultureInfo.InvariantCulture), CancellationToken.None);
+            lock (historyLock)
+            {
+                foreach (var s in signalHistory) if (final.TryGetValue(s.Symbol, out var o)) ohlcByRow[Key(s)] = o;
+                foreach (var (_, p) in positionHistory) if (final.TryGetValue(p.Symbol, out var o)) ohlcByRow[PositionKey(p)] = o;
+                historyEpoch++; // the grids redraw all rows with the final values
+            }
+            SaveHistory();
+            Preferences.Default.Set(OhlcFinalKey, today);
+            AppLog.Info("Ohlc", $"Final open/high/low/close of {final.Count} stock(s) stored after the close.");
+            Update();
+            return true;
+        }
+        catch (Exception e)
+        {
+            AppLog.Error("Ohlc", e, "Final open/high/low/close after the close");
+            return false;
+        }
+    }
+
     /// <summary>What the last save attempt did, in words (shown by the Settings "test" button).</summary>
     public string LastSaveMessage { get; private set; } = "";
 
@@ -360,8 +453,8 @@ public sealed class ScanCoordinator(ApiState state, AppConfig config, INotifier 
         {
             var stamp = today.Replace("-", "") + (force ? "-test" : "-close");
             var saved = false;
-            if (signals.Count > 0) saved |= await saver.SaveCsvAsync($"vwap-signals-{stamp}.csv", GridCsv.SignalsCsv(signals)) is not null;
-            if (positions.Count > 0) saved |= await saver.SaveCsvAsync($"vwap-portfolio-{stamp}.csv", GridCsv.PortfolioCsv(positions)) is not null;
+            if (signals.Count > 0) saved |= await saver.SaveCsvAsync($"vwap-signals-{stamp}.csv", GridCsv.SignalsCsv(signals, OhlcFor)) is not null;
+            if (positions.Count > 0) saved |= await saver.SaveCsvAsync($"vwap-portfolio-{stamp}.csv", GridCsv.PortfolioCsv(positions, x => OhlcFor(x))) is not null;
             if (!saved) { LastSaveMessage = "This Android version cannot save the CSV files automatically - use Export CSV."; if (!force) Update("Market closed. " + LastSaveMessage); return false; }
             if (!force) Preferences.Default.Set(CsvSavedKey, today);
             var message = $"{(force ? "Test: saved" : "Market closed. Saved")} {signals.Count} signal row(s) and {positions.Count} portfolio row(s) to Download/VwapScanner.";
