@@ -1,0 +1,67 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             xmlns:local="clr-namespace:VwapScanner.Mobile"
+             x:Class="VwapScanner.Mobile.MainPage"
+             Title="VWAP Scanner">
+    <ContentPage.ToolbarItems>
+        <ToolbarItem Text="Settings" Clicked="OnSettings" />
+    </ContentPage.ToolbarItems>
+
+    <ScrollView>
+        <VerticalStackLayout Padding="16" Spacing="12">
+            <Label x:Name="StatusLabel" Text="Starting..." />
+
+            <Grid ColumnDefinitions="*,*" ColumnSpacing="8">
+                <Button x:Name="LoginButton" Text="Zerodha login" Clicked="OnLogin" />
+                <Button x:Name="ScanButton" Grid.Column="1" Text="Scan now" Clicked="OnScan" IsEnabled="False" />
+            </Grid>
+
+            <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
+                <Label x:Name="AutoLabel" Text="Auto-refresh" VerticalOptions="Center" />
+                <Switch x:Name="AutoSwitch" Grid.Column="1" Toggled="OnAutoToggled" IsEnabled="False" />
+            </Grid>
+
+            <ActivityIndicator x:Name="Busy" IsRunning="False" IsVisible="False" />
+
+            <Label x:Name="SummaryLabel" FontSize="13" />
+
+            <Grid ColumnDefinitions="*,Auto">
+                <Label x:Name="SignalsHeader" Text="Signals" FontAttributes="Bold" FontSize="18" IsVisible="False" VerticalOptions="Center" />
+                <Button x:Name="ShareButton" Grid.Column="1" Text="Share CSV" Clicked="OnShare" IsVisible="False" />
+            </Grid>
+            <VerticalStackLayout x:Name="SignalsList" Spacing="8">
+                <BindableLayout.ItemTemplate>
+                    <DataTemplate x:DataType="local:Row">
+                        <Border Padding="10" StrokeThickness="1" Stroke="Gray">
+                            <VerticalStackLayout Spacing="2">
+                                <HorizontalStackLayout Spacing="8">
+                                    <Label Text="{Binding Title}" FontAttributes="Bold" />
+                                    <Label Text="NEW" TextColor="Orange" FontAttributes="Bold" IsVisible="{Binding IsNew}" />
+                                </HorizontalStackLayout>
+                                <Label Text="{Binding Detail}" FontSize="12" />
+                            </VerticalStackLayout>
+                        </Border>
+                    </DataTemplate>
+                </BindableLayout.ItemTemplate>
+            </VerticalStackLayout>
+
+            <Label x:Name="PortfolioHeader" Text="Portfolio" FontAttributes="Bold" FontSize="18" IsVisible="False" />
+            <Label x:Name="PortfolioSummary" FontSize="13" IsVisible="False" />
+            <VerticalStackLayout x:Name="PortfolioList" Spacing="8">
+                <BindableLayout.ItemTemplate>
+                    <DataTemplate x:DataType="local:Row">
+                        <Border Padding="10" StrokeThickness="1" Stroke="Gray">
+                            <VerticalStackLayout Spacing="2">
+                                <Label Text="{Binding Title}" FontAttributes="Bold" />
+                                <Label Text="{Binding Detail}" FontSize="12" />
+                            </VerticalStackLayout>
+                        </Border>
+                    </DataTemplate>
+                </BindableLayout.ItemTemplate>
+            </VerticalStackLayout>
+
+            <Label x:Name="NotesLabel" FontSize="12" />
+        </VerticalStackLayout>
+    </ScrollView>
+</ContentPage>
