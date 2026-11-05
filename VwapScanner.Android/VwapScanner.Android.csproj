@@ -17,6 +17,15 @@
     <SupportedOSPlatformVersion>24.0</SupportedOSPlatformVersion>
   </PropertyGroup>
 
+  <!-- The Kite client reads Zerodha's JSON through "dynamic" (runtime reflection). Release builds trim and AOT-compile by default, which breaks that
+       (login failed with "BadArgCount" although Zerodha had answered). Keep Release builds untrimmed and JIT-compiled, like Debug. -->
+  <PropertyGroup Condition="'$(Configuration)' == 'Release'">
+    <PublishTrimmed>false</PublishTrimmed>
+    <AndroidLinkMode>None</AndroidLinkMode>
+    <RunAOTCompilation>false</RunAOTCompilation>
+    <AndroidEnableProfiledAot>false</AndroidEnableProfiledAot>
+  </PropertyGroup>
+
   <ItemGroup>
     <MauiIcon Include="Resources\AppIcon\appicon.svg" ForegroundFile="Resources\AppIcon\appiconfg.svg" Color="#0F4C81" />
     <MauiSplashScreen Include="Resources\Splash\splash.svg" Color="#0F4C81" BaseSize="128,128" />
