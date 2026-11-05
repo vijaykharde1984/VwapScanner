@@ -50,6 +50,7 @@ public partial class MainPage : ContentPage
             }
             catch (ZerodhaException e) { StatusLabel.Text = "Could not check the saved Zerodha token: " + e.Message; return; }
         }
+        await coordinator.ResumeIfEnabledAsync(interactive: true); // auto-refresh was on when the app was closed or killed
         Refresh();
     }
 

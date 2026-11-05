@@ -24,5 +24,7 @@ Or open `VwapScanner.slnx` in Visual Studio, set **VwapScanner.Android** as the 
 6. Export CSV (button above each grid): writes the grid's data as a CSV file into the phone's `Download/VwapScanner` folder (Android 10+; older versions open the share sheet instead). The file holds every row found today, not only the newest 500 shown, with the same columns as the grid. This replaces the web API's automatic CSV writing: nothing is written until you tap Export.
 7. Share CSV: sends both grids as CSV files through the Android share sheet (WhatsApp, e-mail, Drive...).
 
+Surviving a closed app: while auto-refresh is on, the app records "on for today" on the phone. The foreground service is sticky and the notification has a **Stop auto-refresh** button. If Android stops the app's process (for example after you swipe it away), it restarts the service, which logs back in with the saved Zerodha token and carries on; opening the app does the same. Today's grid rows are saved to a file in the app's private storage and reloaded after a restart. Not possible: a force stop (or an Android "sleeping apps" battery limit) ends everything until you open the app again, and an expired Zerodha session (after 06:00 IST) needs a new login; a notification says so.
+
 Other settings (fees, redirect URL) are in `Resources/Raw/appsettings.json`, same names as the web API.
 The API key/secret and saved Zerodha token of the web project are intentionally not copied.

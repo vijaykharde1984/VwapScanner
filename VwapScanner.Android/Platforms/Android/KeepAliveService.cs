@@ -14,7 +14,7 @@ namespace VwapScanner.Mobile;
 [Service(Name = "com.vijaykharde.vwapscanner.KeepAliveService", Exported = false, ForegroundServiceType = ForegroundService.TypeDataSync)]
 public class KeepAliveService : Service
 {
-    public const string ChannelId = "keepalive", ExtraText = "text";
+    public const string ChannelId = "keepalive", ExtraText = "text", ActionStop = "com.vijaykharde.vwapscanner.STOP";
     private const int NotificationId = 1001;
     private PowerManager.WakeLock? wakeLock;
 
@@ -36,6 +36,11 @@ public class KeepAliveService : Service
         builder.SetSmallIcon(Android.Resource.Drawable.IcMenuRecentHistory);
         builder.SetOngoing(true);
         builder.SetContentIntent(PendingIntent.GetActivity(this, 0, open, PendingIntentFlags.Immutable | PendingIntentFlags.UpdateCurrent));
+        var stop = new Intent(this, typeof(KeepAliveService));
+        stop.SetAction(ActionStop);
+        const PendingIntentFlags stopFlags = PendingIntentFlags.Immutable | PendingIntentFlags.UpdateCurrent;
+        builder.AddAction(Android.Resource.Drawable.IcMenuCloseClearCancel, "Stop auto-refresh",
+            OperatingSystem.IsAndroidVersionAtLeast(26) ? PendingIntent.GetForegroundService(this, 1, stop, stopFlags) : PendingIntent.GetService(this, 1, stop, stopFlags));
         var notification = builder.Build()!;
         if (OperatingSystem.IsAndroidVersionAtLeast(29)) StartForeground(NotificationId, notification, ForegroundService.TypeDataSync);
         else StartForeground(NotificationId, notification);
@@ -45,7 +50,25 @@ public class KeepAliveService : Service
             wakeLock = power.NewWakeLock(WakeLockFlags.Partial, "VwapScanner:autorefresh");
             wakeLock?.Acquire(7 * 60 * 60 * 1000L); // safety timeout; released earlier when auto-refresh stops
         }
-        return StartCommandResult.NotSticky;
+
+        var coordinator = IPlatformApplication.Current?.Services.GetService<ScanCoordinator>();
+        if (intent?.Action == ActionStop)
+        {
+            coordinator?.StopAuto(); // also clears the "resume" flag
+            StopForeground(StopForegroundFlags.Remove);
+            StopSelf();
+            return StartCommandResult.NotSticky;
+        }
+        if (intent is null)
+        {
+            // Android restarted the service after it stopped the app's process: pick auto-refresh up again if it was on.
+            _ = Task.Run(async () =>
+            {
+                try { if (coordinator is null || !await coordinator.ResumeIfEnabledAsync(interactive: false)) { StopForeground(StopForegroundFlags.Remove); StopSelf(); } }
+                catch (Exception) { StopSelf(); }
+            });
+        }
+        return StartCommandResult.Sticky;
     }
 
     /// <summary>Android 15 ends a data-sync foreground service after about 6 hours and requires it to stop at once.</summary>

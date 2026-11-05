@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Text.Json;
 
 namespace VwapScanner.Mobile;
 
@@ -48,6 +49,50 @@ public sealed class ScanCoordinator(ApiState state, AppConfig config, INotifier 
     private readonly List<(DateTimeOffset At, PortfolioPosition Position)> positionHistory = [];
     private readonly HashSet<string> positionSeen = [];
     private int historyEpoch;
+    private bool historyLoaded;
+    private const string AutoKey = "auto_date";
+    private static string HistoryPath => Path.Combine(FileSystem.AppDataDirectory, "history.json");
+    private static string IstToday() => DateOnly.FromDateTime(DateTimeOffset.UtcNow.ToOffset(Ist).DateTime).ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
+
+    private sealed record HistoryPosition(DateTimeOffset At, PortfolioPosition Position);
+    private sealed record HistoryFile(string Day, List<VwapSignal> Signals, List<HistoryPosition> Positions, List<string> Seen, List<string> PositionSeen);
+
+    /// <summary>Loads today's grid rows saved by an earlier run of the app (once), so a restart does not lose them.</summary>
+    private void EnsureHistory()
+    {
+        lock (historyLock)
+        {
+            if (historyLoaded) return;
+            historyLoaded = true;
+            try
+            {
+                if (!File.Exists(HistoryPath)) return;
+                var file = JsonSerializer.Deserialize<HistoryFile>(File.ReadAllText(HistoryPath));
+                if (file is null || (file.Day != IstToday() && file.Day != config.Value("Scan:Date"))) return;
+                seenDay = file.Day;
+                seen.UnionWith(file.Seen);
+                positionSeen.UnionWith(file.PositionSeen);
+                signalHistory.AddRange(file.Signals);
+                positionHistory.AddRange(file.Positions.Select(p => (p.At, p.Position)));
+                historyEpoch++;
+            }
+            catch (Exception e) when (e is IOException or JsonException or UnauthorizedAccessException) { /* start with empty grids */ }
+        }
+    }
+
+    private void SaveHistory()
+    {
+        HistoryFile snapshot;
+        lock (historyLock)
+            snapshot = new(seenDay, [.. signalHistory], [.. positionHistory.Select(x => new HistoryPosition(x.At, x.Position))], [.. seen], [.. positionSeen]);
+        try
+        {
+            var temp = HistoryPath + ".tmp";
+            File.WriteAllText(temp, JsonSerializer.Serialize(snapshot));
+            File.Move(temp, HistoryPath, overwrite: true);
+        }
+        catch (Exception) { /* saving is best effort: the grids still work from memory */ }
+    }
 
     public RunResult? Last { get; private set; }
     public IReadOnlySet<string> NewKeys { get; private set; } = new HashSet<string>();
@@ -103,6 +148,7 @@ public sealed class ScanCoordinator(ApiState state, AppConfig config, INotifier 
     /// <summary>The rows added since the caller last looked. <c>Reset</c> means a new trading day started, so the caller must clear its grids first.</summary>
     public HistoryChunk TakeHistory(int epoch, int signalsFrom, int positionsFrom)
     {
+        EnsureHistory();
         lock (historyLock)
         {
             var reset = epoch != historyEpoch;
@@ -112,8 +158,8 @@ public sealed class ScanCoordinator(ApiState state, AppConfig config, INotifier 
         }
     }
 
-    public List<VwapSignal> ExportSignals() { lock (historyLock) return [.. signalHistory]; }
-    public List<(DateTimeOffset At, PortfolioPosition Position)> ExportPositions() { lock (historyLock) return [.. positionHistory]; }
+    public List<VwapSignal> ExportSignals() { EnsureHistory(); lock (historyLock) return [.. signalHistory]; }
+    public List<(DateTimeOffset At, PortfolioPosition Position)> ExportPositions() { EnsureHistory(); lock (historyLock) return [.. positionHistory]; }
 
     /// <summary>Cancels the scan that is running now (an auto-refresh loop carries on with its next scan).</summary>
     public void CancelScan()
@@ -123,6 +169,7 @@ public sealed class ScanCoordinator(ApiState state, AppConfig config, INotifier 
 
     private void Apply(RunResult r, bool auto)
     {
+        EnsureHistory();
         if (r.Scan.Date != seenDay)
         {
             seen.Clear(); seenDay = r.Scan.Date;
@@ -137,6 +184,7 @@ public sealed class ScanCoordinator(ApiState state, AppConfig config, INotifier 
                 if (positionSeen.Add($"{p.Symbol}|{p.BarTime.ToString("O", CultureInfo.InvariantCulture)}|{p.Quantity}|{p.Price.ToString(CultureInfo.InvariantCulture)}"))
                     positionHistory.Add((DateTimeOffset.Now, p));
         }
+        SaveHistory();
         NewKeys = fresh.Select(Key).ToHashSet();
         Last = r;
         if (auto && fresh.Count > 0 && config.Notify)
@@ -152,20 +200,52 @@ public sealed class ScanCoordinator(ApiState state, AppConfig config, INotifier 
 
     // ---- auto-refresh ----
 
-    public async Task<bool> StartAutoAsync()
+    /// <param name="interactive">False when started by the background service (no screen to ask for the notification permission on).</param>
+    public async Task<bool> StartAutoAsync(bool interactive = true)
     {
         if (AutoRunning) return true;
         if (!state.Connected) { Update("Log in to Zerodha before starting auto-refresh."); return false; }
-        if (config.Notify) await notifier.EnsurePermissionAsync();
+        if (interactive && config.Notify) await notifier.EnsurePermissionAsync();
         var cts = new CancellationTokenSource();
         loopCts = cts;
+        Preferences.Default.Set(AutoKey, IstToday()); // "auto-refresh is on today": lets a restarted app or service carry on
         keepAlive.Start($"Scanning every {config.AutoRefreshMinutes} min until the market closes");
         Update($"Auto-refresh on: every {config.AutoRefreshMinutes} min until 15:30 IST.");
         _ = Task.Run(() => LoopAsync(cts));
         return true;
     }
 
-    public void StopAuto() => loopCts?.Cancel();
+    public void StopAuto()
+    {
+        Preferences.Default.Remove(AutoKey);
+        loopCts?.Cancel();
+    }
+
+    /// <summary>
+    /// Carries on with auto-refresh after the app or its process was stopped (swiped away, killed by Android, reopened) while it was on today.
+    /// False when it was not on, or could not resume (then the reason is shown and a notification is posted).
+    /// </summary>
+    public async Task<bool> ResumeIfEnabledAsync(bool interactive)
+    {
+        if (AutoRunning) return true;
+        var day = Preferences.Default.Get(AutoKey, "");
+        if (day.Length == 0) return false;
+        if (day != IstToday()) { Preferences.Default.Remove(AutoKey); return false; }
+        try
+        {
+            await config.LoadSecretsAsync();
+            if (!state.Connected) await Task.Run(() => state.RestoreAsync(CancellationToken.None));
+        }
+        catch (ZerodhaException e) { Update("Could not resume auto-refresh: " + e.Message); return false; }
+        if (!state.Connected)
+        {
+            Preferences.Default.Remove(AutoKey);
+            Update("Auto-refresh could not resume: log in to Zerodha again.");
+            if (config.Notify) notifier.Notify(2, "VWAP Scanner", "Auto-refresh stopped: the Zerodha session is not valid. Open the app and log in again.");
+            return false;
+        }
+        return await StartAutoAsync(interactive);
+    }
 
     private async Task LoopAsync(CancellationTokenSource cts)
     {
@@ -203,7 +283,7 @@ public sealed class ScanCoordinator(ApiState state, AppConfig config, INotifier 
         finally
         {
             keepAlive.Stop();
-            if (ReferenceEquals(loopCts, cts)) loopCts = null;
+            if (ReferenceEquals(loopCts, cts)) { loopCts = null; Preferences.Default.Remove(AutoKey); } // ended on purpose: do not resume
             cts.Dispose();
             Update(ending);
         }
