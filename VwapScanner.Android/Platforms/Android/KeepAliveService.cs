@@ -14,7 +14,10 @@ namespace VwapScanner.Mobile;
 [Service(Name = "com.vijaykharde.vwapscanner.KeepAliveService", Exported = false, ForegroundServiceType = ForegroundService.TypeDataSync)]
 public class KeepAliveService : Service
 {
-    public const string ChannelId = "keepalive", ExtraText = "text", ActionStop = "com.vijaykharde.vwapscanner.STOP";
+    public const string ChannelId = "keepalive", ExtraText = "text", ActionStop = "com.vijaykharde.vwapscanner.STOP", ActionQuit = "com.vijaykharde.vwapscanner.QUIT";
+
+    /// <summary>True from the moment the app asks for the service until it asks it to end (or the service ends itself).</summary>
+    public static volatile bool Requested;
     private const int NotificationId = 1001;
     private PowerManager.WakeLock? wakeLock;
 
@@ -51,6 +54,16 @@ public class KeepAliveService : Service
             wakeLock?.Acquire(7 * 60 * 60 * 1000L); // safety timeout; released earlier when auto-refresh stops
         }
 
+        if (intent?.Action == ActionQuit)
+        {
+            // Asked by the app (auto-refresh ended). Goes through OnStartCommand so startForeground() has already been called above;
+            // a plain StopService() right after StartForegroundService() crashes the app.
+            Requested = false;
+            StopForeground(StopForegroundFlags.Remove);
+            StopSelf(startId);
+            return StartCommandResult.NotSticky;
+        }
+        Requested = true;
         var coordinator = IPlatformApplication.Current?.Services.GetService<ScanCoordinator>();
         if (intent?.Action == ActionStop)
         {
@@ -95,6 +108,7 @@ public sealed class AndroidKeepAlive : IKeepAlive
             var context = Android.App.Application.Context;
             var intent = new Intent(context, typeof(KeepAliveService));
             intent.PutExtra(KeepAliveService.ExtraText, text);
+            KeepAliveService.Requested = true;
             ContextCompat.StartForegroundService(context, intent);
         }
         catch (Exception) { /* auto-refresh still works while the app is on screen */ }
@@ -104,8 +118,12 @@ public sealed class AndroidKeepAlive : IKeepAlive
     {
         try
         {
+            if (!KeepAliveService.Requested) return;
+            KeepAliveService.Requested = false;
             var context = Android.App.Application.Context;
-            context.StopService(new Intent(context, typeof(KeepAliveService)));
+            var intent = new Intent(context, typeof(KeepAliveService));
+            intent.SetAction(KeepAliveService.ActionQuit);
+            ContextCompat.StartForegroundService(context, intent);
         }
         catch (Exception) { }
     }
