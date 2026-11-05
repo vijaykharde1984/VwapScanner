@@ -14,7 +14,7 @@ namespace VwapScanner.Mobile;
 [Service(Name = "com.vijaykharde.vwapscanner.KeepAliveService", Exported = false, ForegroundServiceType = ForegroundService.TypeDataSync)]
 public class KeepAliveService : Service
 {
-    public const string ChannelId = "keepalive", ExtraText = "text", ActionStop = "com.vijaykharde.vwapscanner.STOP", ActionQuit = "com.vijaykharde.vwapscanner.QUIT";
+    public const string ChannelId = "keepalive", ExtraText = "text", ActionStop = "com.vijaykharde.vwapscanner.STOP", ActionQuit = "com.vijaykharde.vwapscanner.QUIT", ActionAutoResume = "com.vijaykharde.vwapscanner.AUTORESUME";
 
     /// <summary>True from the moment the app asks for the service until it asks it to end (or the service ends itself).</summary>
     public static volatile bool Requested;
@@ -72,9 +72,9 @@ public class KeepAliveService : Service
             StopSelf();
             return StartCommandResult.NotSticky;
         }
-        if (intent is null)
+        if (intent is null || intent.Action == ActionAutoResume)
         {
-            // Android restarted the service after it stopped the app's process: pick auto-refresh up again if it was on.
+            // Android restarted the service after it stopped the app's process, or the 09:10 alarm started it: pick auto-refresh up again if it was on.
             _ = Task.Run(async () =>
             {
                 try { if (coordinator is null || !await coordinator.ResumeIfEnabledAsync(interactive: false)) { StopForeground(StopForegroundFlags.Remove); StopSelf(); } }
@@ -114,6 +114,44 @@ public sealed class AndroidKeepAlive : IKeepAlive
         catch (Exception) { /* auto-refresh still works while the app is on screen */ }
     }
 
+    private const int AlarmRequestCode = 78;
+
+    public void ScheduleStart(DateTimeOffset at)
+    {
+        try
+        {
+            var context = Android.App.Application.Context;
+            if (context.GetSystemService(Context.AlarmService) is not AlarmManager alarms) return;
+            var pending = StartAlarmIntent(context);
+            if (pending is null) return;
+            alarms.Cancel(pending);
+            var millis = at.ToUnixTimeMilliseconds();
+            if (!OperatingSystem.IsAndroidVersionAtLeast(31) || alarms.CanScheduleExactAlarms())
+                alarms.SetExactAndAllowWhileIdle(AlarmType.RtcWakeup, millis, pending);
+            else
+                alarms.SetAndAllowWhileIdle(AlarmType.RtcWakeup, millis, pending);
+            AppLog.Info("Service", $"Alarm set to start the background service at {at:HH:mm} IST.");
+        }
+        catch (Exception e) { AppLog.Error("Service", e, "Could not set the 09:10 alarm"); }
+    }
+
+    public void CancelScheduledStart()
+    {
+        try
+        {
+            var context = Android.App.Application.Context;
+            if (context.GetSystemService(Context.AlarmService) is AlarmManager alarms && StartAlarmIntent(context) is { } pending) alarms.Cancel(pending);
+        }
+        catch (Exception) { }
+    }
+
+    private static PendingIntent? StartAlarmIntent(Context context)
+    {
+        var intent = new Intent(context, typeof(ServiceStartReceiver));
+        intent.SetAction(KeepAliveService.ActionAutoResume);
+        return PendingIntent.GetBroadcast(context, AlarmRequestCode, intent, PendingIntentFlags.Immutable | PendingIntentFlags.UpdateCurrent);
+    }
+
     public void Stop()
     {
         try
@@ -126,5 +164,31 @@ public sealed class AndroidKeepAlive : IKeepAlive
             ContextCompat.StartForegroundService(context, intent);
         }
         catch (Exception) { }
+    }
+}
+
+/// <summary>Fires at 09:10 IST when auto-refresh was switched on earlier: starts the background service, which resumes auto-refresh (also in a freshly started app process).</summary>
+[BroadcastReceiver(Name = "com.vijaykharde.vwapscanner.ServiceStartReceiver", Enabled = true, Exported = false)]
+public class ServiceStartReceiver : BroadcastReceiver
+{
+    public override void OnReceive(Context? context, Intent? intent)
+    {
+        if (context is null) return;
+        try
+        {
+            var start = new Intent(context, typeof(KeepAliveService));
+            start.SetAction(KeepAliveService.ActionAutoResume);
+            KeepAliveService.Requested = true;
+            ContextCompat.StartForegroundService(context, start);
+            AppLog.Info("Service", "The 09:10 alarm started the background service.");
+        }
+        catch (Exception e)
+        {
+            // Android refused to start a service from the background (no "Alarms & reminders" permission): ask the user to open the app instead.
+            KeepAliveService.Requested = false;
+            AppLog.Error("Service", e, "The 09:10 alarm could not start the service");
+            try { IPlatformApplication.Current?.Services.GetService<INotifier>()?.Remind("Open VWAP Scanner", "Auto-refresh could not start by itself. Open the app to continue.", true, true); }
+            catch (Exception) { }
+        }
     }
 }

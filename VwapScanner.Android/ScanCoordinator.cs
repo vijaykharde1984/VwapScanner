@@ -39,6 +39,9 @@ public interface IKeepAlive
 {
     void Start(string text);
     void Stop();
+    /// <summary>Android wakes the app at this time and starts the service (and resumes auto-refresh) even if the app was closed meanwhile.</summary>
+    void ScheduleStart(DateTimeOffset at);
+    void CancelScheduledStart();
 }
 
 /// <summary>
@@ -271,13 +274,14 @@ public sealed class ScanCoordinator(ApiState state, AppConfig config, INotifier 
         Preferences.Default.Remove(StoppedKey);
         Preferences.Default.Set(AutoKey, IstToday()); // "auto-refresh is on today": lets a restarted app or service carry on
         serviceStarted = false;
+        startScheduled = false;
         EnsureService();
         Update($"Auto-refresh on: every {config.AutoRefreshMinutes} min until 15:30 IST.");
         _ = Task.Run(() => LoopAsync(cts));
         return true;
     }
 
-    private bool serviceStarted;
+    private bool serviceStarted, startScheduled;
 
     /// <summary>
     /// Starts the background (foreground-service) notification, but not hours before the market opens: Android allows such a service only about
@@ -286,7 +290,21 @@ public sealed class ScanCoordinator(ApiState state, AppConfig config, INotifier 
     private void EnsureService()
     {
         if (serviceStarted) return;
-        if (!config.Replaying && DateTimeOffset.UtcNow.ToOffset(Ist).TimeOfDay < MarketOpen - TimeSpan.FromMinutes(5)) return;
+        if (!config.Replaying)
+        {
+            var now = DateTimeOffset.UtcNow.ToOffset(Ist);
+            var startAt = MarketOpen - TimeSpan.FromMinutes(5);
+            if (now.TimeOfDay < startAt)
+            {
+                // Too early for the service. An alarm starts it at 09:10 even if the app is closed (or was closed by Android) until then.
+                if (!startScheduled)
+                {
+                    startScheduled = true;
+                    keepAlive.ScheduleStart(new DateTimeOffset(DateOnly.FromDateTime(now.DateTime).ToDateTime(TimeOnly.FromTimeSpan(startAt)), Ist));
+                }
+                return;
+            }
+        }
         serviceStarted = true;
         keepAlive.Start($"Scanning every {config.AutoRefreshMinutes} min until the market closes");
     }
@@ -296,6 +314,7 @@ public sealed class ScanCoordinator(ApiState state, AppConfig config, INotifier 
         Preferences.Default.Remove(AutoKey);
         Preferences.Default.Set(StoppedKey, IstToday()); // the user stopped it: do not start it again automatically today
         loopCts?.Cancel();
+        keepAlive.CancelScheduledStart();
     }
 
     /// <summary>
@@ -390,6 +409,8 @@ public sealed class ScanCoordinator(ApiState state, AppConfig config, INotifier 
             Update(ending);
             if (ending == MarketClosedText) await FinalizeDayAsync(); // before the keep-alive service is released
             serviceStarted = false;
+            startScheduled = false;
+            keepAlive.CancelScheduledStart();
             keepAlive.Stop();
         }
     }
