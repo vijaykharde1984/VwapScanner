@@ -15,7 +15,8 @@
             <!-- Strategy, portfolio and auto-refresh fields are added here by SettingsPage.xaml.cs from SettingDef.All -->
             <VerticalStackLayout x:Name="Fields" Spacing="8" />
 
-            <Button Text="Save" Clicked="OnSave" Margin="0,16,0,0" />
+            <Button Text="Send test reminder" Clicked="OnTestReminder" Margin="0,16,0,0" />
+            <Button Text="Save" Clicked="OnSave" />
             <Button Text="Reset settings to defaults" Clicked="OnReset" />
         </VerticalStackLayout>
     </ScrollView>

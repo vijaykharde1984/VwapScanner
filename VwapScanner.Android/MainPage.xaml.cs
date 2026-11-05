@@ -1,4 +1,5 @@
 using System.Globalization;
+using static VwapScanner.GridCsv;
 
 namespace VwapScanner.Mobile;
 
@@ -9,21 +10,16 @@ public partial class MainPage : ContentPage
     private readonly ScanCoordinator coordinator;
     private readonly IServiceProvider services;
     private readonly IFileSaver saver;
+    private readonly IReminderScheduler reminders;
     private int restoredRevision = -1;
     private bool updatingSwitch;
     private RunResult? shown;
 
-    // Same columns as vwap-signals-*.csv and vwap-portfolio-*.csv (the portfolio grid has a leading scan-time column).
-    private static readonly string[] SignalHeaders =
-        ["symbol", "instrument_id", "bar_time", "close", "vwap", "stretch_atr", "atr", "relative_volume", "score", "stop", "target"];
-    private static readonly string[] PositionHeaders =
-        ["scanned_at", "symbol", "instrument_id", "bar_time", "price", "stop", "target", "vwap_exit", "quantity", "notional", "weight_percent",
-         "risk_at_stop_inr", "risk_share_percent", "net_gain_at_vwap_inr", "score"];
     private readonly ResultTable signalsTable = new(SignalHeaders, [110, 110, 200, 90, 90, 100, 80, 120, 80, 90, 90]);
     private readonly ResultTable portfolioTable = new(PositionHeaders, [90, 110, 110, 200, 90, 90, 90, 90, 80, 100, 120, 130, 140, 160, 80]);
     private int historyEpoch = -1, signalRows, positionRows;
 
-    public MainPage(ApiState state, AppConfig config, ScanCoordinator coordinator, IFileSaver saver, IServiceProvider services)
+    public MainPage(ApiState state, AppConfig config, ScanCoordinator coordinator, IFileSaver saver, IReminderScheduler reminders, IServiceProvider services)
     {
         InitializeComponent();
         this.state = state;
@@ -31,6 +27,7 @@ public partial class MainPage : ContentPage
         this.coordinator = coordinator;
         this.services = services;
         this.saver = saver;
+        this.reminders = reminders;
         SignalsGridHost.Content = signalsTable.View;
         PortfolioGridHost.Content = portfolioTable.View;
     }
@@ -39,6 +36,7 @@ public partial class MainPage : ContentPage
     {
         base.OnAppearing();
         coordinator.Changed += OnCoordinatorChanged;
+        reminders.Schedule(); // keep the daily reminder alarm in place (alarms are lost after a reboot or an app update)
         if (restoredRevision != config.Revision)
         {
             restoredRevision = config.Revision;
@@ -51,6 +49,8 @@ public partial class MainPage : ContentPage
             catch (ZerodhaException e) { StatusLabel.Text = "Could not check the saved Zerodha token: " + e.Message; return; }
         }
         await coordinator.ResumeIfEnabledAsync(interactive: true); // auto-refresh was on when the app was closed or killed
+        await coordinator.AutoStartIfDefaultAsync();               // otherwise start it by default (setting "Start auto-refresh automatically")
+        await coordinator.SaveDailyCsvIfDueAsync();                // after the close: save today's CSV files if that has not happened yet
         Refresh();
     }
 
@@ -113,16 +113,6 @@ public partial class MainPage : ContentPage
         ExportPortfolioButton.IsEnabled = positionRows > 0;
     }
 
-    private static string N(decimal x) => x.ToString("0.####", CultureInfo.InvariantCulture);
-    private static string T(DateTimeOffset x) => x.ToString("yyyy-MM-ddTHH:mm:sszzz", CultureInfo.InvariantCulture);
-
-    private static string[] SignalCells(VwapSignal s) =>
-        [s.Symbol, s.InstrumentId.ToString(CultureInfo.InvariantCulture), T(s.BarTime), N(s.Close), N(s.Vwap), N(s.StretchAtr), N(s.Atr), N(s.RelativeVolume), N(s.Score), N(s.Stop), N(s.Target)];
-
-    private static string[] PositionCells(DateTimeOffset at, PortfolioPosition p) =>
-        [at.ToString("HH:mm:ss", CultureInfo.InvariantCulture), p.Symbol, p.InstrumentId.ToString(CultureInfo.InvariantCulture), T(p.BarTime), N(p.Price), N(p.Stop), N(p.Target), N(p.VwapExit),
-         p.Quantity.ToString(CultureInfo.InvariantCulture), N(p.Notional), N(p.WeightPercent), N(p.RiskAtStopInr), N(p.RiskSharePercent), N(p.NetGainAtVwapInr), N(p.Score)];
-
     private async void OnSettings(object? sender, EventArgs e) =>
         await Navigation.PushAsync(services.GetRequiredService<SettingsPage>());
 
@@ -155,9 +145,6 @@ public partial class MainPage : ContentPage
     }
 
     // ---- CSV export of the grids (the files hold every row found today, not only the newest 500 shown) ----
-
-    private static string ToCsv(string[] headers, IEnumerable<string[]> rows) =>
-        string.Join('\n', rows.Select(r => string.Join(',', r)).Prepend(string.Join(',', headers))) + "\n";
 
     private (string Name, string Csv, int Rows)? SignalsFile(string stamp)
     {

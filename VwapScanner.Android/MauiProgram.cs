@@ -13,6 +13,7 @@ public static class MauiProgram
         builder.Services.AddSingleton<INotifier, AndroidNotifier>();
         builder.Services.AddSingleton<IKeepAlive, AndroidKeepAlive>();
         builder.Services.AddSingleton<IFileSaver, AndroidFileSaver>();
+        builder.Services.AddSingleton<IReminderScheduler, AndroidReminderScheduler>();
         builder.Services.AddSingleton<ScanCoordinator>();
         builder.Services.AddTransient<MainPage>();
         builder.Services.AddTransient<LoginPage>();

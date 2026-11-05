@@ -54,6 +54,14 @@ public sealed class AppConfig
     public string Value(string key) => Root[key] ?? "";
 
     public int AutoRefreshMinutes => int.TryParse(Root["App:AutoRefreshMinutes"], NumberStyles.Integer, CultureInfo.InvariantCulture, out var m) ? Math.Clamp(m, 1, 120) : 5;
+    /// <summary>Auto-refresh starts by itself when the app opens (signed in, market day, before 15:35 IST).</summary>
+    public bool AutoStart => !bool.TryParse(Root["App:AutoStart"], out var a) || a;
+    /// <summary>Daily reminder time (IST, weekdays); null when the setting is empty (no reminder).</summary>
+    public TimeOnly? ReminderTime => TimeOnly.TryParseExact(Root["App:ReminderTime"], "HH:mm", CultureInfo.InvariantCulture, DateTimeStyles.None, out var t) ? t : null;
+    public bool ReminderSound => !bool.TryParse(Root["App:ReminderSound"], out var s) || s;
+    public bool ReminderVibrate => !bool.TryParse(Root["App:ReminderVibrate"], out var v) || v;
+    /// <summary>Save the day's CSV files automatically when the market closes.</summary>
+    public bool SaveCsvAtClose => !bool.TryParse(Root["App:SaveCsvAtClose"], out var c) || c;
     public bool Notify => !bool.TryParse(Root["App:Notify"], out var n) || n;
     /// <summary>True when a past day is being replayed, so the market-hours checks of auto-refresh do not apply.</summary>
     public bool Replaying => !string.IsNullOrWhiteSpace(Root["Scan:Date"]);

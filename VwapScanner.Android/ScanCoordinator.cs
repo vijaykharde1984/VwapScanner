@@ -12,6 +12,8 @@ public interface INotifier
     /// <summary>Asks for the notification permission where Android requires it (13+); true when notifications can be shown.</summary>
     Task<bool> EnsurePermissionAsync();
     void Notify(int id, string title, string text);
+    /// <summary>The daily reminder: a notification with or without sound and vibration, as chosen in Settings.</summary>
+    void Remind(string title, string text, bool sound, bool vibrate);
 }
 
 /// <summary>Keeps the app process alive while auto-refresh runs, with an ongoing notification (an Android foreground service).</summary>
@@ -20,6 +22,13 @@ public interface IFileSaver
 {
     /// <summary>The place it was saved to, or null when this Android version cannot save directly (the caller then shares the file).</summary>
     Task<string?> SaveCsvAsync(string fileName, string content);
+}
+
+/// <summary>Schedules the daily reminder with Android's alarm service (works while the app is closed).</summary>
+public interface IReminderScheduler
+{
+    /// <summary>(Re)schedules the next reminder from the current settings, or cancels it when no time is set.</summary>
+    void Schedule();
 }
 
 public interface IKeepAlive
@@ -33,7 +42,7 @@ public interface IKeepAlive
 /// It remembers which signals were already seen today, so each scan can mark the new ones and an auto-refresh can notify about them.
 /// The page only displays what the coordinator holds, so the loop keeps going while the screen is off or another page is open.
 /// </summary>
-public sealed class ScanCoordinator(ApiState state, AppConfig config, INotifier notifier, IKeepAlive keepAlive)
+public sealed class ScanCoordinator(ApiState state, AppConfig config, INotifier notifier, IKeepAlive keepAlive, IFileSaver saver)
 {
     private static readonly TimeSpan Ist = TimeSpan.FromHours(5.5);
     private static readonly TimeSpan MarketOpen = new(9, 15, 0), MarketClose = new(15, 30, 0), StopAfter = new(15, 35, 0);
@@ -50,7 +59,8 @@ public sealed class ScanCoordinator(ApiState state, AppConfig config, INotifier 
     private readonly HashSet<string> positionSeen = [];
     private int historyEpoch;
     private bool historyLoaded;
-    private const string AutoKey = "auto_date";
+    private const string AutoKey = "auto_date", StoppedKey = "auto_stopped_date", CsvSavedKey = "csv_saved_date";
+    private const string MarketClosedText = "Market closed - auto-refresh stopped.";
     private static string HistoryPath => Path.Combine(FileSystem.AppDataDirectory, "history.json");
     private static string IstToday() => DateOnly.FromDateTime(DateTimeOffset.UtcNow.ToOffset(Ist).DateTime).ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
 
@@ -99,6 +109,8 @@ public sealed class ScanCoordinator(ApiState state, AppConfig config, INotifier 
     public string Status { get; private set; } = "";
     public bool Busy { get; private set; }
     public bool AutoRunning => loopCts is not null;
+    /// <summary>Auto-refresh is running, or was on today and is about to resume: no reminder is needed.</summary>
+    public bool IsAutoActiveToday => AutoRunning || Preferences.Default.Get(AutoKey, "") == IstToday();
 
     /// <summary>Raised from any thread whenever the status, the busy flag or the result changes.</summary>
     public event Action? Changed;
@@ -208,6 +220,7 @@ public sealed class ScanCoordinator(ApiState state, AppConfig config, INotifier 
         if (interactive && config.Notify) await notifier.EnsurePermissionAsync();
         var cts = new CancellationTokenSource();
         loopCts = cts;
+        Preferences.Default.Remove(StoppedKey);
         Preferences.Default.Set(AutoKey, IstToday()); // "auto-refresh is on today": lets a restarted app or service carry on
         keepAlive.Start($"Scanning every {config.AutoRefreshMinutes} min until the market closes");
         Update($"Auto-refresh on: every {config.AutoRefreshMinutes} min until 15:30 IST.");
@@ -218,7 +231,21 @@ public sealed class ScanCoordinator(ApiState state, AppConfig config, INotifier 
     public void StopAuto()
     {
         Preferences.Default.Remove(AutoKey);
+        Preferences.Default.Set(StoppedKey, IstToday()); // the user stopped it: do not start it again automatically today
         loopCts?.Cancel();
+    }
+
+    /// <summary>
+    /// Default behaviour: start auto-refresh when the app opens. Only when the setting is on, Zerodha is connected, it is a weekday before 15:35 IST,
+    /// no past day is being replayed, and the user has not stopped it today.
+    /// </summary>
+    public async Task<bool> AutoStartIfDefaultAsync()
+    {
+        if (!config.AutoStart || AutoRunning || Busy || config.Replaying || !state.Connected) return false;
+        if (Preferences.Default.Get(StoppedKey, "") == IstToday()) return false;
+        var now = DateTimeOffset.UtcNow.ToOffset(Ist);
+        if (now.DayOfWeek is DayOfWeek.Saturday or DayOfWeek.Sunday || now.TimeOfDay >= StopAfter) return false;
+        return await StartAutoAsync(interactive: true);
     }
 
     /// <summary>
@@ -255,17 +282,19 @@ public sealed class ScanCoordinator(ApiState state, AppConfig config, INotifier 
         {
             while (!ct.IsCancellationRequested)
             {
+                var closing = false;
                 if (!config.Replaying)
                 {
                     var now = DateTimeOffset.UtcNow.ToOffset(Ist);
                     var weekday = now.DayOfWeek is not (DayOfWeek.Saturday or DayOfWeek.Sunday);
-                    if (!weekday || now.TimeOfDay >= StopAfter) { ending = "Market closed - auto-refresh stopped."; break; }
+                    if (!weekday || now.TimeOfDay >= StopAfter) { ending = MarketClosedText; break; }
                     if (now.TimeOfDay < MarketOpen)
                     {
                         Update($"Waiting for the market to open (09:15 IST, now {now:HH:mm}).");
                         await Task.Delay(TimeSpan.FromSeconds(30), ct);
                         continue;
                     }
+                    closing = now.TimeOfDay >= MarketClose; // this is the closing scan: it sees the last candle of the day
                 }
                 await ScanOnceAsync(auto: true, ct);
                 if (!state.Connected)
@@ -274,18 +303,66 @@ public sealed class ScanCoordinator(ApiState state, AppConfig config, INotifier 
                     if (config.Notify) notifier.Notify(2, "VWAP Scanner", "The Zerodha session ended. Open the app and log in again.");
                     break;
                 }
-                var minutes = config.AutoRefreshMinutes;
-                Update($"Auto-refresh on. Next scan at {DateTime.Now.AddMinutes(minutes):HH:mm}.");
-                await Task.Delay(TimeSpan.FromMinutes(minutes), ct);
+                if (closing) { ending = MarketClosedText; break; }
+                var wait = TimeSpan.FromMinutes(config.AutoRefreshMinutes);
+                if (!config.Replaying)
+                {
+                    // Wake up just after 15:30 so the closing scan is not delayed by a long interval.
+                    var untilClose = MarketClose + TimeSpan.FromSeconds(20) - DateTimeOffset.UtcNow.ToOffset(Ist).TimeOfDay;
+                    if (untilClose > TimeSpan.Zero && untilClose < wait) wait = untilClose;
+                }
+                Update($"Auto-refresh on. Next scan at {DateTime.Now.Add(wait):HH:mm}.");
+                await Task.Delay(wait, ct);
             }
         }
         catch (OperationCanceledException) { ending = "Auto-refresh stopped."; }
         finally
         {
-            keepAlive.Stop();
             if (ReferenceEquals(loopCts, cts)) { loopCts = null; Preferences.Default.Remove(AutoKey); } // ended on purpose: do not resume
             cts.Dispose();
             Update(ending);
+            if (ending == MarketClosedText) await SaveDailyCsvIfDueAsync(); // before the keep-alive service is released
+            keepAlive.Stop();
+        }
+    }
+
+    /// <summary>
+    /// After the close, saves today's signals and portfolio rows as CSV files (Download/VwapScanner), once per day. Called when auto-refresh ends at the close,
+    /// and when the app is opened after the close (in case it was not running then). Nothing is saved for a day without results.
+    /// </summary>
+    public async Task<bool> SaveDailyCsvIfDueAsync()
+    {
+        if (!config.SaveCsvAtClose || config.Replaying) return false;
+        var now = DateTimeOffset.UtcNow.ToOffset(Ist);
+        if (now.DayOfWeek is DayOfWeek.Saturday or DayOfWeek.Sunday || now.TimeOfDay < MarketClose) return false;
+        var today = IstToday();
+        if (Preferences.Default.Get(CsvSavedKey, "") == today) return false;
+        EnsureHistory();
+        List<VwapSignal> signals; List<(DateTimeOffset At, PortfolioPosition Position)> positions;
+        lock (historyLock)
+        {
+            if (seenDay != today) return false;
+            signals = [.. signalHistory];
+            positions = [.. positionHistory];
+        }
+        if (signals.Count == 0 && positions.Count == 0) return false;
+        try
+        {
+            var stamp = today.Replace("-", "") + "-close";
+            var saved = false;
+            if (signals.Count > 0) saved |= await saver.SaveCsvAsync($"vwap-signals-{stamp}.csv", GridCsv.SignalsCsv(signals)) is not null;
+            if (positions.Count > 0) saved |= await saver.SaveCsvAsync($"vwap-portfolio-{stamp}.csv", GridCsv.PortfolioCsv(positions)) is not null;
+            if (!saved) { Update("Market closed. This Android version cannot save the CSV files automatically - use Export CSV."); return false; }
+            Preferences.Default.Set(CsvSavedKey, today);
+            var message = $"Market closed. Saved {signals.Count} signal row(s) and {positions.Count} portfolio row(s) to Download/VwapScanner.";
+            Update(message);
+            if (config.Notify) notifier.Notify(4, "VWAP Scanner", message);
+            return true;
+        }
+        catch (Exception e)
+        {
+            Update("Market closed. Could not save the CSV files: " + e.Message);
+            return false;
         }
     }
 }
