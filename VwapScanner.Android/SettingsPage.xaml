@@ -3,20 +3,22 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
              x:Class="VwapScanner.Mobile.SettingsPage"
              Title="Settings">
-    <ScrollView>
+    <ScrollView x:Name="Scroller">
         <VerticalStackLayout Padding="16" Spacing="10">
             <Label Text="Zerodha" FontAttributes="Bold" FontSize="16" />
             <Label Text="Kite Connect API key" FontAttributes="Bold" />
-            <Entry x:Name="KeyEntry" Placeholder="API key" Keyboard="Plain" />
+            <Entry x:Name="KeyEntry" Placeholder="API key" Keyboard="Plain" MaxLength="64" TextChanged="OnFieldChanged" />
+            <Label x:Name="KeyError" TextColor="#C62828" FontSize="12" IsVisible="False" />
             <Label Text="Kite Connect API secret" FontAttributes="Bold" />
-            <Entry x:Name="SecretEntry" Placeholder="API secret" IsPassword="True" Keyboard="Plain" />
+            <Entry x:Name="SecretEntry" Placeholder="API secret" IsPassword="True" Keyboard="Plain" MaxLength="64" TextChanged="OnFieldChanged" />
+            <Label x:Name="SecretError" TextColor="#C62828" FontSize="12" IsVisible="False" />
             <Label Text="Values you type here are stored only on this phone (Android secure storage) and win over the defaults bundled from appsettings.Local.json, if any. Your Kite app's Redirect URL must be http://127.0.0.1:9079/ - the same as the web API." FontSize="12" />
 
             <!-- Strategy, portfolio and auto-refresh fields are added here by SettingsPage.xaml.cs from SettingDef.All -->
             <VerticalStackLayout x:Name="Fields" Spacing="8" />
 
             <Button Text="Send test reminder" Clicked="OnTestReminder" Margin="0,16,0,0" />
-            <Button Text="Save" Clicked="OnSave" />
+            <Button x:Name="SaveButton" Text="Save" Clicked="OnSave" />
             <Button Text="Reset settings to defaults" Clicked="OnReset" />
         </VerticalStackLayout>
     </ScrollView>

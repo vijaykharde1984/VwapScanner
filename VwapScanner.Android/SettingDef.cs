@@ -19,22 +19,22 @@ public sealed record SettingDef(string Key, string Label, SettingKind Kind, stri
         new("Scan:Date", "Replay date", SettingKind.Date, "Scan", "yyyy-MM-dd to replay a past trading day; empty = today."),
         new("Scan:At", "Replay time", SettingKind.ShortTime, "Scan", "HH:mm to evaluate as of that time; empty = now."),
 
-        new("Scan:Strategy:MinStretchAtr", "Min stretch below VWAP (ATR)", SettingKind.Decimal, "Strategy"),
-        new("Scan:Strategy:MinRelativeVolume", "Min relative volume", SettingKind.Decimal, "Strategy"),
-        new("Scan:Strategy:MinBarTurnover", "Min bar turnover (INR)", SettingKind.Decimal, "Strategy"),
-        new("Scan:Strategy:MinTargetBps", "Min target (bps)", SettingKind.Decimal, "Strategy"),
-        new("Scan:Strategy:StopAtrMultiple", "Stop (ATR multiple)", SettingKind.Decimal, "Strategy"),
-        new("Scan:Strategy:RewardRiskRatio", "Reward : risk", SettingKind.Decimal, "Strategy"),
+        new("Scan:Strategy:MinStretchAtr", "Min stretch below VWAP (ATR)", SettingKind.Decimal, "Strategy", Min: 0, Max: 20),
+        new("Scan:Strategy:MinRelativeVolume", "Min relative volume", SettingKind.Decimal, "Strategy", Min: 0, Max: 100),
+        new("Scan:Strategy:MinBarTurnover", "Min bar turnover (INR)", SettingKind.Decimal, "Strategy", Min: 0, Max: 1000000000),
+        new("Scan:Strategy:MinTargetBps", "Min target (bps)", SettingKind.Decimal, "Strategy", Min: 0, Max: 1000),
+        new("Scan:Strategy:StopAtrMultiple", "Stop (ATR multiple)", SettingKind.Decimal, "Strategy", Min: 0.1m, Max: 20),
+        new("Scan:Strategy:RewardRiskRatio", "Reward : risk", SettingKind.Decimal, "Strategy", Min: 0.1m, Max: 20),
         new("Scan:Strategy:EntryStart", "First entry time", SettingKind.Time, "Strategy", "HH:mm or HH:mm:ss"),
         new("Scan:Strategy:LastEntry", "Last entry time", SettingKind.Time, "Strategy", "HH:mm or HH:mm:ss"),
 
-        new("Portfolio:Capital", "Capital (INR)", SettingKind.Decimal, "Portfolio", Min: 1),
-        new("Portfolio:RiskPerTradePercent", "Risk per trade (%)", SettingKind.Decimal, "Portfolio"),
-        new("Portfolio:MaxPortfolioStopRiskPercent", "Max portfolio risk at stops (%)", SettingKind.Decimal, "Portfolio"),
+        new("Portfolio:Capital", "Capital (INR)", SettingKind.Decimal, "Portfolio", Min: 1, Max: 1000000000),
+        new("Portfolio:RiskPerTradePercent", "Risk per trade (%)", SettingKind.Decimal, "Portfolio", Min: 0.01m, Max: 100),
+        new("Portfolio:MaxPortfolioStopRiskPercent", "Max portfolio risk at stops (%)", SettingKind.Decimal, "Portfolio", Min: 0.01m, Max: 100),
         new("Portfolio:MaxAssetAllocationPercent", "Max allocation per stock (%)", SettingKind.Decimal, "Portfolio", Min: 0.01m, Max: 100),
         new("Portfolio:MaxPositions", "Max positions", SettingKind.Integer, "Portfolio", Min: 1, Max: 50),
-        new("Portfolio:MaxParticipationPercent", "Max share of bar volume (%)", SettingKind.Decimal, "Portfolio"),
-        new("Portfolio:SlippageBpsPerSide", "Slippage per side (bps)", SettingKind.Decimal, "Portfolio"),
+        new("Portfolio:MaxParticipationPercent", "Max share of bar volume (%)", SettingKind.Decimal, "Portfolio", Min: 0.01m, Max: 100),
+        new("Portfolio:SlippageBpsPerSide", "Slippage per side (bps)", SettingKind.Decimal, "Portfolio", Min: 0, Max: 1000),
 
         new("App:AutoStart", "Start auto-refresh automatically", SettingKind.Bool, "Auto-refresh",
             "Starts by itself when you open the app, signed in to Zerodha, on market days until 15:30 IST. Switching it off on the main screen (or Stop in the notification) keeps it off for the rest of that day."),
@@ -84,7 +84,11 @@ public sealed record SettingDef(string Key, string Label, SettingKind Kind, stri
             case SettingKind.Date:
                 if (text.Length == 0) return true;
                 if (DateOnly.TryParseExact(text, "yyyy-MM-dd", inv, DateTimeStyles.None, out var day))
-                { value = day.ToString("yyyy-MM-dd", inv); return true; }
+                {
+                    if (day > DateOnly.FromDateTime(DateTime.Today)) { error = $"{Label}: choose today or an earlier day"; return false; }
+                    if (day.DayOfWeek is DayOfWeek.Saturday or DayOfWeek.Sunday) { error = $"{Label}: the market is closed on weekends"; return false; }
+                    value = day.ToString("yyyy-MM-dd", inv); return true;
+                }
                 error = $"{Label}: use yyyy-MM-dd or leave empty";
                 return false;
             case SettingKind.Choice:

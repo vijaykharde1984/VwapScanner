@@ -1,11 +1,19 @@
+using System.Globalization;
+using System.Text.RegularExpressions;
+
 namespace VwapScanner.Mobile;
 
 public partial class SettingsPage : ContentPage
 {
+    private static readonly Color ErrorColor = Color.FromArgb("#C62828");
+    private static readonly Regex KeyShape = new("^[A-Za-z0-9]{6,64}$");
+
     private readonly AppConfig config;
     private readonly INotifier notifier;
     private readonly IReminderScheduler reminders;
     private readonly Dictionary<SettingDef, View> inputs = [];
+    private readonly Dictionary<SettingDef, Label> errors = [];
+    private bool loading;
 
     public SettingsPage(AppConfig config, INotifier notifier, IReminderScheduler reminders)
     {
@@ -27,36 +35,99 @@ public partial class SettingsPage : ContentPage
                 Fields.Add(new Label { Text = section, FontAttributes = FontAttributes.Bold, FontSize = 16, Margin = new Thickness(0, 14, 0, 0) });
             }
             Fields.Add(new Label { Text = def.Label, FontAttributes = FontAttributes.Bold });
-            View input = def.Kind switch
-            {
-                SettingKind.Bool => new Switch { HorizontalOptions = LayoutOptions.Start },
-                SettingKind.Choice => new Picker { ItemsSource = def.Options },
-                SettingKind.Integer or SettingKind.Decimal => new Entry { Keyboard = Keyboard.Numeric },
-                _ => new Entry { Keyboard = Keyboard.Plain },
-            };
+            var input = CreateInput(def);
             inputs[def] = input;
             Fields.Add(input);
+            var error = new Label { TextColor = ErrorColor, FontSize = 12, IsVisible = false };
+            errors[def] = error;
+            Fields.Add(error);
             if (def.Hint.Length > 0) Fields.Add(new Label { Text = def.Hint, FontSize = 12 });
         }
     }
 
+    private View CreateInput(SettingDef def)
+    {
+        switch (def.Kind)
+        {
+            case SettingKind.Bool:
+                var sw = new Switch { HorizontalOptions = LayoutOptions.Start };
+                sw.Toggled += (_, _) => Revalidate();
+                return sw;
+            case SettingKind.Choice:
+                var picker = new Picker { ItemsSource = def.Options };
+                picker.SelectedIndexChanged += (_, _) => Revalidate();
+                return picker;
+            case SettingKind.ShortTime or SettingKind.Time:
+                var time = new TimeInput(optional: def.Kind == SettingKind.ShortTime);
+                time.Changed += (_, _) => Revalidate();
+                return time;
+            case SettingKind.Date:
+                var date = new DateInput();
+                date.Changed += (_, _) => Revalidate();
+                return date;
+            default:
+                var integer = def.Kind == SettingKind.Integer;
+                var entry = new Entry
+                {
+                    Keyboard = Keyboard.Numeric,
+                    MaxLength = integer ? 6 : 12,
+                    Placeholder = RangeText(def),
+                    ClearButtonVisibility = ClearButtonVisibility.WhileEditing,
+                };
+                entry.TextChanged += (_, e) =>
+                {
+                    // Only digits (and one dot for decimals) can be typed; anything else is dropped immediately.
+                    var clean = Sanitize(e.NewTextValue, integer);
+                    if (clean != (e.NewTextValue ?? "")) entry.Text = clean;
+                    else Revalidate();
+                };
+                return entry;
+        }
+    }
+
+    private static string Sanitize(string? text, bool integer)
+    {
+        var sb = new System.Text.StringBuilder();
+        var dot = false;
+        foreach (var ch in (text ?? "").Replace(',', '.'))
+        {
+            if (char.IsAsciiDigit(ch)) sb.Append(ch);
+            else if (ch == '.' && !integer && !dot) { dot = true; sb.Append(ch); }
+        }
+        return sb.ToString();
+    }
+
+    private static string RangeText(SettingDef def) => (def.Min, def.Max) switch
+    {
+        ({ } a, { } b) => $"{a:0.##} to {b:0.##}",
+        ({ } a, null) => $"at least {a:0.##}",
+        _ => "",
+    };
+
     private void LoadValues()
     {
+        loading = true;
         foreach (var (def, input) in inputs)
         {
             var value = config.Value(def.Key);
             switch (input)
             {
                 case Switch s: s.IsToggled = value.Equals("true", StringComparison.OrdinalIgnoreCase); break;
+                case TimeInput t: t.Value = value; break;
+                case DateInput d: d.Value = value; break;
                 case Picker p: p.SelectedItem = def.Options?.FirstOrDefault(o => o.Equals(value, StringComparison.OrdinalIgnoreCase)); break;
                 case Entry e: e.Text = value; break;
             }
         }
+        loading = false;
+        Revalidate();
     }
 
     private static string ReadValue(View input) => input switch
     {
         Switch s => s.IsToggled ? "true" : "false",
+        TimeInput t => t.Value,
+        DateInput d => d.Value,
         Picker p => p.SelectedItem as string ?? "",
         Entry e => e.Text ?? "",
         _ => "",
@@ -66,22 +137,83 @@ public partial class SettingsPage : ContentPage
     {
         base.OnAppearing();
         await config.LoadSecretsAsync();
+        loading = true;
         KeyEntry.Text = config.ApiKey;
         SecretEntry.Text = config.ApiSecret;
+        loading = false;
         LoadValues();
     }
+
+    private void OnFieldChanged(object? sender, TextChangedEventArgs e) => Revalidate();
+
+    private static void Show(Label label, string? message)
+    {
+        label.Text = message ?? "";
+        label.IsVisible = message is not null;
+    }
+
+    /// <summary>Checks every field (and the rules that span several fields), shows the messages under the fields and enables Save only when all is valid.</summary>
+    private bool Revalidate(List<(SettingDef Def, string Value)>? good = null)
+    {
+        if (loading) return false;
+        var ok = true;
+        var values = new Dictionary<string, string>();
+        foreach (var (def, input) in inputs)
+        {
+            string? message = null;
+            if (def.TryNormalize(ReadValue(input), out var value, out var error)) values[def.Key] = value;
+            else message = error.StartsWith(def.Label + ": ") ? error[(def.Label.Length + 2)..] : error;
+            Show(errors[def], message);
+            ok &= message is null;
+        }
+
+        // Rules that involve more than one field.
+        if (ok)
+        {
+            if (Dec(values, "Portfolio:RiskPerTradePercent") > Dec(values, "Portfolio:MaxPortfolioStopRiskPercent"))
+            {
+                Show(Error("Portfolio:RiskPerTradePercent"), "Cannot be more than the max portfolio risk at stops.");
+                ok = false;
+            }
+            if (Tm(values, "Scan:Strategy:EntryStart") >= Tm(values, "Scan:Strategy:LastEntry"))
+            {
+                Show(Error("Scan:Strategy:LastEntry"), "Must be later than the first entry time.");
+                ok = false;
+            }
+            if (values["Scan:At"].Length > 0 && values["Scan:Date"].Length == 0)
+            {
+                Show(Error("Scan:At"), "Pick a replay date as well, or clear the replay time.");
+                ok = false;
+            }
+        }
+
+        var key = (KeyEntry.Text ?? "").Trim();
+        var secret = (SecretEntry.Text ?? "").Trim();
+        var keyError = key.Length == 0 || KeyShape.IsMatch(key) ? null : "Use 6-64 letters and digits only (no spaces).";
+        var secretError = secret.Length == 0 || KeyShape.IsMatch(secret) ? null : "Use 6-64 letters and digits only (no spaces).";
+        Show(KeyError, keyError);
+        Show(SecretError, secretError);
+        ok &= keyError is null && secretError is null;
+
+        SaveButton.IsEnabled = ok;
+        if (ok && good is not null)
+            foreach (var def in SettingDef.All) good.Add((def, values[def.Key]));
+        return ok;
+    }
+
+    private Label Error(string key) => errors.First(kv => kv.Key.Key == key).Value;
+    private static decimal Dec(Dictionary<string, string> v, string key) => decimal.Parse(v[key], CultureInfo.InvariantCulture);
+    private static TimeOnly Tm(Dictionary<string, string> v, string key) => TimeOnly.ParseExact(v[key], ["HH:mm", "HH:mm:ss"], CultureInfo.InvariantCulture);
 
     private async void OnSave(object? sender, EventArgs e)
     {
         var values = new List<(SettingDef Def, string Value)>();
-        foreach (var (def, input) in inputs)
+        if (!Revalidate(values))
         {
-            if (!def.TryNormalize(ReadValue(input), out var value, out var error))
-            {
-                await DisplayAlertAsync("Settings", error, "OK");
-                return;
-            }
-            values.Add((def, value));
+            var first = errors.Values.Concat([KeyError, SecretError]).FirstOrDefault(l => l.IsVisible);
+            if (first is not null) await Scroller.ScrollToAsync(first, ScrollToPosition.Center, true);
+            await DisplayAlertAsync("Settings", "Please correct the fields marked in red.", "OK");
+            return;
         }
         if ((KeyEntry.Text ?? "").Trim() != config.ApiKey || (SecretEntry.Text ?? "").Trim() != config.ApiSecret)
             await config.SaveCredentialsAsync(KeyEntry.Text ?? "", SecretEntry.Text ?? "");
