@@ -22,6 +22,7 @@
             <Button Text="Test: save CSV files now" Clicked="OnTestSaveCsv" />
             <Button x:Name="SaveButton" Text="Save" Clicked="OnSave" />
             <Button Text="Reset settings to defaults" Clicked="OnReset" />
+            <Label x:Name="BuildLabel" FontSize="11" HorizontalOptions="Center" Margin="0,12,0,0" />
         </VerticalStackLayout>
     </ScrollView>
 </ContentPage>

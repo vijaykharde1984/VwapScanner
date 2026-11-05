@@ -22,6 +22,12 @@ public partial class SettingsPage : ContentPage
         this.reminders = reminders;
         this.coordinator = coordinator;
         BuildFields();
+#if DEBUG
+        const string build = "Debug";
+#else
+        const string build = "Release";
+#endif
+        BuildLabel.Text = $"VWAP Scanner {AppInfo.VersionString} - {build} build";
     }
 
     private void BuildFields()

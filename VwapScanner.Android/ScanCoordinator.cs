@@ -270,10 +270,25 @@ public sealed class ScanCoordinator(ApiState state, AppConfig config, INotifier 
         loopCts = cts;
         Preferences.Default.Remove(StoppedKey);
         Preferences.Default.Set(AutoKey, IstToday()); // "auto-refresh is on today": lets a restarted app or service carry on
-        keepAlive.Start($"Scanning every {config.AutoRefreshMinutes} min until the market closes");
+        serviceStarted = false;
+        EnsureService();
         Update($"Auto-refresh on: every {config.AutoRefreshMinutes} min until 15:30 IST.");
         _ = Task.Run(() => LoopAsync(cts));
         return true;
+    }
+
+    private bool serviceStarted;
+
+    /// <summary>
+    /// Starts the background (foreground-service) notification, but not hours before the market opens: Android allows such a service only about
+    /// 6 hours, so it starts 5 minutes before 09:15 IST. Until then the loop just waits inside the app.
+    /// </summary>
+    private void EnsureService()
+    {
+        if (serviceStarted) return;
+        if (!config.Replaying && DateTimeOffset.UtcNow.ToOffset(Ist).TimeOfDay < MarketOpen - TimeSpan.FromMinutes(5)) return;
+        serviceStarted = true;
+        keepAlive.Start($"Scanning every {config.AutoRefreshMinutes} min until the market closes");
     }
 
     public void StopAuto()
@@ -331,6 +346,7 @@ public sealed class ScanCoordinator(ApiState state, AppConfig config, INotifier 
             while (!ct.IsCancellationRequested)
             {
                 var closing = false;
+                EnsureService();
                 if (!config.Replaying)
                 {
                     var now = DateTimeOffset.UtcNow.ToOffset(Ist);
@@ -373,6 +389,7 @@ public sealed class ScanCoordinator(ApiState state, AppConfig config, INotifier 
             AppLog.Info("Auto", "Auto-refresh ended: " + ending);
             Update(ending);
             if (ending == MarketClosedText) await FinalizeDayAsync(); // before the keep-alive service is released
+            serviceStarted = false;
             keepAlive.Stop();
         }
     }

@@ -17,13 +17,14 @@
     <SupportedOSPlatformVersion>24.0</SupportedOSPlatformVersion>
   </PropertyGroup>
 
-  <!-- The Kite client reads Zerodha's JSON through "dynamic" (runtime reflection). Release builds trim and AOT-compile by default, which breaks that
-       (login failed with "BadArgCount" although Zerodha had answered). Keep Release builds untrimmed and JIT-compiled, like Debug. -->
+  <!-- The Kite client reads Zerodha's JSON through "dynamic" (runtime reflection). The Release trimmer removes members that code needs
+       (login failed with "BadArgCount" although Zerodha had answered), so Release builds are not trimmed. AOT compilation is switched off with it (Android only supports AOT together with trimming). -->
   <PropertyGroup Condition="'$(Configuration)' == 'Release'">
     <PublishTrimmed>false</PublishTrimmed>
-    <AndroidLinkMode>None</AndroidLinkMode>
-    <RunAOTCompilation>false</RunAOTCompilation>
+    <RunAOTCompilation>false</RunAOTCompilation> <!-- Android only allows AOT together with trimming -->
     <AndroidEnableProfiledAot>false</AndroidEnableProfiledAot>
+    <!-- Lets the green Start button (F5) attach to a Release build, so Visual Studio can show the exception if the app ever crashes. -->
+    <AndroidIncludeDebugSymbols>true</AndroidIncludeDebugSymbols>
   </PropertyGroup>
 
   <ItemGroup>
