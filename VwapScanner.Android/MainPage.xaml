@@ -62,6 +62,18 @@
             </VerticalStackLayout>
 
             <Label x:Name="NotesLabel" FontSize="12" />
+
+            <!-- Result grids (same columns as the CSV files). Rows are appended by MainPage.xaml.cs after every refresh that has results. -->
+            <Grid ColumnDefinitions="*,Auto" Margin="0,8,0,0">
+                <Label x:Name="SignalsGridHeader" Text="Signals grid" FontAttributes="Bold" FontSize="18" VerticalOptions="Center" />
+                <Button x:Name="ExportSignalsButton" Grid.Column="1" Text="Export CSV" Clicked="OnExportSignals" IsEnabled="False" />
+            </Grid>
+            <ContentView x:Name="SignalsGridHost" />
+            <Grid ColumnDefinitions="*,Auto" Margin="0,8,0,0">
+                <Label x:Name="PortfolioGridHeader" Text="Portfolio grid" FontAttributes="Bold" FontSize="18" VerticalOptions="Center" />
+                <Button x:Name="ExportPortfolioButton" Grid.Column="1" Text="Export CSV" Clicked="OnExportPortfolio" IsEnabled="False" />
+            </Grid>
+            <ContentView x:Name="PortfolioGridHost" />
         </VerticalStackLayout>
     </ScrollView>
 </ContentPage>

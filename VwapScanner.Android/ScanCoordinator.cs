@@ -2,6 +2,9 @@ using System.Globalization;
 
 namespace VwapScanner.Mobile;
 
+public sealed record HistoryChunk(int Epoch, bool Reset, IReadOnlyList<VwapSignal> Signals,
+    IReadOnlyList<(DateTimeOffset At, PortfolioPosition Position)> Positions, int SignalTotal, int PositionTotal);
+
 /// <summary>Shows Android notifications (implemented in Platforms/Android).</summary>
 public interface INotifier
 {
@@ -11,6 +14,13 @@ public interface INotifier
 }
 
 /// <summary>Keeps the app process alive while auto-refresh runs, with an ongoing notification (an Android foreground service).</summary>
+/// <summary>Saves a text file where the user can find it (Android: Downloads\VwapScanner).</summary>
+public interface IFileSaver
+{
+    /// <summary>The place it was saved to, or null when this Android version cannot save directly (the caller then shares the file).</summary>
+    Task<string?> SaveCsvAsync(string fileName, string content);
+}
+
 public interface IKeepAlive
 {
     void Start(string text);
@@ -31,6 +41,13 @@ public sealed class ScanCoordinator(ApiState state, AppConfig config, INotifier 
     private readonly HashSet<string> seen = [];
     private string seenDay = "";
     private CancellationTokenSource? loopCts, scanCts;
+
+    // Everything found today, appended scan after scan: the data behind the result grids and the CSV export.
+    private readonly object historyLock = new();
+    private readonly List<VwapSignal> signalHistory = [];
+    private readonly List<(DateTimeOffset At, PortfolioPosition Position)> positionHistory = [];
+    private readonly HashSet<string> positionSeen = [];
+    private int historyEpoch;
 
     public RunResult? Last { get; private set; }
     public IReadOnlySet<string> NewKeys { get; private set; } = new HashSet<string>();
@@ -83,6 +100,21 @@ public sealed class ScanCoordinator(ApiState state, AppConfig config, INotifier 
         }
     }
 
+    /// <summary>The rows added since the caller last looked. <c>Reset</c> means a new trading day started, so the caller must clear its grids first.</summary>
+    public HistoryChunk TakeHistory(int epoch, int signalsFrom, int positionsFrom)
+    {
+        lock (historyLock)
+        {
+            var reset = epoch != historyEpoch;
+            if (reset) { signalsFrom = 0; positionsFrom = 0; }
+            return new(historyEpoch, reset, signalHistory.Skip(signalsFrom).ToList(), positionHistory.Skip(positionsFrom).ToList(),
+                signalHistory.Count, positionHistory.Count);
+        }
+    }
+
+    public List<VwapSignal> ExportSignals() { lock (historyLock) return [.. signalHistory]; }
+    public List<(DateTimeOffset At, PortfolioPosition Position)> ExportPositions() { lock (historyLock) return [.. positionHistory]; }
+
     /// <summary>Cancels the scan that is running now (an auto-refresh loop carries on with its next scan).</summary>
     public void CancelScan()
     {
@@ -91,8 +123,20 @@ public sealed class ScanCoordinator(ApiState state, AppConfig config, INotifier 
 
     private void Apply(RunResult r, bool auto)
     {
-        if (r.Scan.Date != seenDay) { seen.Clear(); seenDay = r.Scan.Date; }
+        if (r.Scan.Date != seenDay)
+        {
+            seen.Clear(); seenDay = r.Scan.Date;
+            lock (historyLock) { signalHistory.Clear(); positionHistory.Clear(); positionSeen.Clear(); historyEpoch++; }
+        }
         var fresh = r.Scan.Signals.Where(s => seen.Add(Key(s))).ToList();
+        lock (historyLock)
+        {
+            // Only results that are not already in the grid: a signal is identified by stock + candle, a position by stock + candle + quantity + price.
+            signalHistory.AddRange(fresh.OrderBy(s => s.BarTime).ThenByDescending(s => s.Score));
+            foreach (var p in r.Plan.Positions)
+                if (positionSeen.Add($"{p.Symbol}|{p.BarTime.ToString("O", CultureInfo.InvariantCulture)}|{p.Quantity}|{p.Price.ToString(CultureInfo.InvariantCulture)}"))
+                    positionHistory.Add((DateTimeOffset.Now, p));
+        }
         NewKeys = fresh.Select(Key).ToHashSet();
         Last = r;
         if (auto && fresh.Count > 0 && config.Notify)

@@ -14,6 +14,7 @@ public sealed class AppConfig
     private const string KeyApi = "zerodha_api_key", KeySecret = "zerodha_api_secret", OverridePrefix = "cfg:";
     private readonly Dictionary<string, string?> defaults = [];
     private bool secretsLoaded;
+    private string defaultApiKey = "", defaultApiSecret = "";
 
     public IConfigurationRoot Root { get; }
 
@@ -24,9 +25,20 @@ public sealed class AppConfig
 
     public static AppConfig Load()
     {
+        var builder = new ConfigurationBuilder();
         using var stream = Task.Run(() => FileSystem.OpenAppPackageFileAsync("appsettings.json")).GetAwaiter().GetResult();
-        var root = new ConfigurationBuilder().AddJsonStream(stream).Build();
-        var config = new AppConfig(root);
+        builder.AddJsonStream(stream);
+        // Optional, git-ignored Resources\Raw\appsettings.Local.json (same as the web API's): supplies the default API key and secret.
+        Stream? local = null;
+        try
+        {
+            local = Task.Run(() => FileSystem.OpenAppPackageFileAsync("appsettings.Local.json")).GetAwaiter().GetResult();
+            builder.AddJsonStream(local);
+        }
+        catch (Exception) { local?.Dispose(); local = null; /* no local file: the user types the key in Settings */ }
+        var root = builder.Build();
+        local?.Dispose();
+        var config = new AppConfig(root) { defaultApiKey = root["Zerodha:ApiKey"] ?? "", defaultApiSecret = root["Zerodha:ApiSecret"] ?? "" };
         foreach (var def in SettingDef.All)
         {
             config.defaults[def.Key] = root[def.Key];
@@ -51,8 +63,9 @@ public sealed class AppConfig
         if (secretsLoaded) return;
         try
         {
-            Root["Zerodha:ApiKey"] = await SecureStorage.Default.GetAsync(KeyApi) ?? "";
-            Root["Zerodha:ApiSecret"] = await SecureStorage.Default.GetAsync(KeySecret) ?? "";
+            // Values typed in Settings win over the bundled defaults.
+            if (await SecureStorage.Default.GetAsync(KeyApi) is { Length: > 0 } key) Root["Zerodha:ApiKey"] = key;
+            if (await SecureStorage.Default.GetAsync(KeySecret) is { Length: > 0 } secret) Root["Zerodha:ApiSecret"] = secret;
         }
         catch (Exception) { /* a broken keystore just means the user types the key again */ }
         secretsLoaded = true;
@@ -63,8 +76,8 @@ public sealed class AppConfig
         apiKey = apiKey.Trim(); apiSecret = apiSecret.Trim();
         if (apiKey.Length == 0) SecureStorage.Default.Remove(KeyApi); else await SecureStorage.Default.SetAsync(KeyApi, apiKey);
         if (apiSecret.Length == 0) SecureStorage.Default.Remove(KeySecret); else await SecureStorage.Default.SetAsync(KeySecret, apiSecret);
-        Root["Zerodha:ApiKey"] = apiKey;
-        Root["Zerodha:ApiSecret"] = apiSecret;
+        Root["Zerodha:ApiKey"] = apiKey.Length > 0 ? apiKey : defaultApiKey;
+        Root["Zerodha:ApiSecret"] = apiSecret.Length > 0 ? apiSecret : defaultApiSecret;
         secretsLoaded = true;
         Revision++;
     }

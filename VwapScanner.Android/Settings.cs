@@ -24,12 +24,3 @@ public sealed class ScanSettings
     public string? At { get; set; }
     public VwapOptions Strategy { get; set; } = new();
 }
-
-/// <summary>"Output" section: every run is also written to the console of the running app and to CSV files.</summary>
-public sealed class OutputSettings
-{
-    public bool Console { get; set; } = true;
-    public bool Csv { get; set; } = true;
-    /// <summary>Folder for the CSV files; relative paths are under the application folder.</summary>
-    public string Folder { get; set; } = "output";
-}

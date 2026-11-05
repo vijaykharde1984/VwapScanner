@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Reflection;
 using KiteConnect;
 
 namespace VwapScanner;
@@ -20,8 +21,26 @@ public sealed class KiteClient : IDisposable
 
     public KiteClient(string apiKey, string accessToken)
     {
-        kite = new Kite(apiKey, Timeout: 60000); // the NSE instrument dump is several MB
+        kite = NewKite(apiKey); // the NSE instrument dump is several MB
         kite.SetAccessToken(accessToken);
+    }
+
+    private const int TimeoutMs = 60000;
+
+    /// <summary>
+    /// The Kite SDK sends every request with the synchronous HttpClient.Send. Android's default (native) HTTP handler does not support that and throws
+    /// PlatformNotSupportedException ("Operation is not supported on this platform"), so the SDK's private HttpClient is replaced with one that
+    /// uses the managed SocketsHttpHandler, which supports synchronous sends. Everything else about the SDK is unchanged.
+    /// </summary>
+    private static Kite NewKite(string apiKey)
+    {
+        var kite = new Kite(apiKey, Timeout: TimeoutMs);
+        var field = typeof(Kite).GetField("httpClient", BindingFlags.Instance | BindingFlags.NonPublic);
+        if (field?.GetValue(kite) is not HttpClient original)
+            throw new ZerodhaException("Unsupported Kite client version: its HTTP client could not be replaced. Pin Tech.Zerodha.KiteConnect 5.0.0.");
+        field.SetValue(kite, new HttpClient(new SocketsHttpHandler()) { BaseAddress = original.BaseAddress, Timeout = TimeSpan.FromMilliseconds(TimeoutMs) });
+        original.Dispose();
+        return kite;
     }
 
     public static string LoginUrl(string apiKey) => new Kite(apiKey).GetLoginURL();
@@ -31,7 +50,7 @@ public sealed class KiteClient : IDisposable
     {
         try
         {
-            var user = await Task.Run(() => new Kite(apiKey, Timeout: 60000).GenerateSession(requestToken, apiSecret), ct);
+            var user = await Task.Run(() => NewKite(apiKey).GenerateSession(requestToken, apiSecret), ct);
             return string.IsNullOrWhiteSpace(user.AccessToken) ? throw new ZerodhaException("Zerodha returned no access token.") : user.AccessToken;
         }
         catch (TokenException) { throw new ZerodhaException("Zerodha rejected the request token. It is single-use and short-lived: log in again."); }

@@ -10,7 +10,7 @@
             <Entry x:Name="KeyEntry" Placeholder="API key" Keyboard="Plain" />
             <Label Text="Kite Connect API secret" FontAttributes="Bold" />
             <Entry x:Name="SecretEntry" Placeholder="API secret" IsPassword="True" Keyboard="Plain" />
-            <Label Text="Stored only on this phone (Android secure storage). Your Kite app's Redirect URL must be http://127.0.0.1:9079/ - the same as the web API." FontSize="12" />
+            <Label Text="Values you type here are stored only on this phone (Android secure storage) and win over the defaults bundled from appsettings.Local.json, if any. Your Kite app's Redirect URL must be http://127.0.0.1:9079/ - the same as the web API." FontSize="12" />
 
             <!-- Strategy, portfolio and auto-refresh fields are added here by SettingsPage.xaml.cs from SettingDef.All -->
             <VerticalStackLayout x:Name="Fields" Spacing="8" />

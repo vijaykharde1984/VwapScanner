@@ -119,7 +119,6 @@ public sealed class ApiState(IConfiguration config, string contentRoot)
             master ??= await LoadMasterAsync(api, ct);
             var result = await new Scanner(api, master, candles).ScanAsync(symbols, request, ct, progress);
             var plan = PortfolioOptimizer.Optimize(result.Signals, limits);
-            Reporter.Report(config.GetSection("Output").Get<OutputSettings>() ?? new(), result, plan, contentRoot);
             return new RunResult("ScalpVwap", scan.Symbols.Count > 0 ? "custom symbols" : scan.Universe, result, plan);
         }
         catch (ZerodhaAuthException) { Disconnect(); throw; }

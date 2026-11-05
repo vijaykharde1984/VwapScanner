@@ -2,7 +2,7 @@
 
 .NET MAUI (Android) port of the VwapScanner web API in the sibling folder `..\VwapScanner.WebApi`. The web project is not modified by this app.
 
-Copied unchanged: `VwapStrategy.cs`, `Portfolio.cs`, `Scanner.cs`, `TokenStore.cs`, `Settings.cs`, `Reporter.cs`.
+Copied unchanged: `VwapStrategy.cs`, `Portfolio.cs`, `Scanner.cs`, `TokenStore.cs`. `Settings.cs` is a copy without the `Output` settings, and `Reporter.cs` is not copied: this app never writes CSV files by itself.
 Adapted copies: `KiteClient.cs` (one exception type fully qualified), `ApiState.cs` (typed `RunResult` instead of an anonymous JSON object, progress callback),
 `Universe.cs` (reads the stock lists from the APK).
 New: `AppConfig.cs`, `MauiProgram.cs`, `App`, `MainPage`, `LoginPage`, `SettingsPage`, `Platforms/Android`.
@@ -20,7 +20,9 @@ Or open `VwapScanner.slnx` in Visual Studio, set **VwapScanner.Android** as the 
 2. Zerodha login: logs in inside the app. The Kite app's Redirect URL stays `http://127.0.0.1:9079/` - the in-app browser intercepts that redirect and finishes the login. Sessions end at 06:00 IST.
 3. Scan now: runs the same ScalpVwap scan and portfolio optimization as the web API's `GET /` and lists the signals and the sized positions. Read-only: it never places orders. Signals not seen in an earlier scan today are marked NEW.
 4. Auto-refresh switch: re-scans every N minutes (default 5) between 09:15 and 15:30 IST, Monday to Friday, and stops by itself after the close. The lookback is raised to the interval so no candle between two scans is missed. While it runs, an ongoing notification and a foreground service keep the app alive with the screen off, and a notification announces each new signal (Android 13+ asks for the notification permission). If Android still pauses the app, exclude it from battery optimization. Android limits this kind of foreground service to about 6 hours.
-5. Share CSV: sends `vwap-signals-*.csv` and `vwap-portfolio-*.csv` (same columns as the web API's files) through the Android share sheet.
+5. Result grids (bottom of the main screen): a signals grid and a portfolio grid with the same columns as the web API's CSV files (the portfolio grid has an extra scanned_at column). After every refresh, manual or automatic, that finds something new, the new rows are appended at the bottom and tinted; refreshes with nothing new change nothing. A signal is identified by stock + candle, a position by stock + candle + quantity + price, so repeated scans do not duplicate rows. The grids start empty on each new trading day and show the newest 500 rows; scroll sideways for all columns.
+6. Export CSV (button above each grid): writes the grid's data as a CSV file into the phone's `Download/VwapScanner` folder (Android 10+; older versions open the share sheet instead). The file holds every row found today, not only the newest 500 shown, with the same columns as the grid. This replaces the web API's automatic CSV writing: nothing is written until you tap Export.
+7. Share CSV: sends both grids as CSV files through the Android share sheet (WhatsApp, e-mail, Drive...).
 
 Other settings (fees, redirect URL) are in `Resources/Raw/appsettings.json`, same names as the web API.
 The API key/secret and saved Zerodha token of the web project are intentionally not copied.
