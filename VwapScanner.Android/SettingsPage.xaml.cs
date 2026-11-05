@@ -1,26 +1,26 @@
 using System.Globalization;
-using System.Text.RegularExpressions;
 
 namespace VwapScanner.Mobile;
 
 public partial class SettingsPage : ContentPage
 {
     private static readonly Color ErrorColor = Color.FromArgb("#C62828");
-    private static readonly Regex KeyShape = new("^[A-Za-z0-9]{6,64}$");
 
     private readonly AppConfig config;
     private readonly INotifier notifier;
     private readonly IReminderScheduler reminders;
+    private readonly ScanCoordinator coordinator;
     private readonly Dictionary<SettingDef, View> inputs = [];
     private readonly Dictionary<SettingDef, Label> errors = [];
     private bool loading;
 
-    public SettingsPage(AppConfig config, INotifier notifier, IReminderScheduler reminders)
+    public SettingsPage(AppConfig config, INotifier notifier, IReminderScheduler reminders, ScanCoordinator coordinator)
     {
         InitializeComponent();
         this.config = config;
         this.notifier = notifier;
         this.reminders = reminders;
+        this.coordinator = coordinator;
         BuildFields();
     }
 
@@ -189,8 +189,10 @@ public partial class SettingsPage : ContentPage
 
         var key = (KeyEntry.Text ?? "").Trim();
         var secret = (SecretEntry.Text ?? "").Trim();
-        var keyError = key.Length == 0 || KeyShape.IsMatch(key) ? null : "Use 6-64 letters and digits only (no spaces).";
-        var secretError = secret.Length == 0 || KeyShape.IsMatch(secret) ? null : "Use 6-64 letters and digits only (no spaces).";
+        var keyError = !AppConfig.IsValidCredential(key) ? "Use 6-64 letters and digits only (no spaces)."
+            : key.Length == 0 && secret.Length > 0 ? "Enter the API key as well, or clear the secret to use the bundled defaults." : null;
+        var secretError = !AppConfig.IsValidCredential(secret) ? "Use 6-64 letters and digits only (no spaces)."
+            : secret.Length == 0 && key.Length > 0 ? "Enter the API secret as well, or clear the key to use the bundled defaults." : null;
         Show(KeyError, keyError);
         Show(SecretError, secretError);
         ok &= keyError is null && secretError is null;
@@ -230,6 +232,13 @@ public partial class SettingsPage : ContentPage
     {
         await notifier.EnsurePermissionAsync();
         notifier.Remind("Start your VWAP scan (test)", "This is how the daily reminder looks and sounds. Tap to open the app.", Toggled("App:ReminderSound"), Toggled("App:ReminderVibrate"));
+    }
+
+    /// <summary>Saves the rows currently in the grids the same way the market-close save does, so the feature can be tried without waiting for 15:30.</summary>
+    private async void OnTestSaveCsv(object? sender, EventArgs e)
+    {
+        await coordinator.SaveDailyCsvIfDueAsync(force: true);
+        await DisplayAlertAsync("Test save", coordinator.LastSaveMessage, "OK");
     }
 
     private async void OnReset(object? sender, EventArgs e)

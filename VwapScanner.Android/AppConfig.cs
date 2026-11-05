@@ -43,7 +43,12 @@ public sealed class AppConfig
         {
             config.defaults[def.Key] = root[def.Key];
             var saved = OverridePrefix + def.Key;
-            if (Preferences.Default.ContainsKey(saved)) root[def.Key] = Preferences.Default.Get(saved, "");
+            if (Preferences.Default.ContainsKey(saved))
+            {
+                // A stored value that no longer passes validation (older version, edited by hand) is dropped in favour of the default.
+                if (def.TryNormalize(Preferences.Default.Get(saved, ""), out var ok, out _)) root[def.Key] = ok;
+                else Preferences.Default.Remove(saved);
+            }
         }
         return config;
     }
@@ -79,9 +84,14 @@ public sealed class AppConfig
         secretsLoaded = true;
     }
 
+    /// <summary>Empty (use the bundled default) or 6-64 letters and digits.</summary>
+    public static bool IsValidCredential(string value) => value.Length == 0 || (value.Length is >= 6 and <= 64 && value.All(char.IsAsciiLetterOrDigit));
+
     public async Task SaveCredentialsAsync(string apiKey, string apiSecret)
     {
         apiKey = apiKey.Trim(); apiSecret = apiSecret.Trim();
+        if (!IsValidCredential(apiKey) || !IsValidCredential(apiSecret) || (apiKey.Length == 0) != (apiSecret.Length == 0))
+            throw new ArgumentException("API key and secret must both be given, using letters and digits only.");
         if (apiKey.Length == 0) SecureStorage.Default.Remove(KeyApi); else await SecureStorage.Default.SetAsync(KeyApi, apiKey);
         if (apiSecret.Length == 0) SecureStorage.Default.Remove(KeySecret); else await SecureStorage.Default.SetAsync(KeySecret, apiSecret);
         Root["Zerodha:ApiKey"] = apiKey.Length > 0 ? apiKey : defaultApiKey;

@@ -330,38 +330,46 @@ public sealed class ScanCoordinator(ApiState state, AppConfig config, INotifier 
     /// After the close, saves today's signals and portfolio rows as CSV files (Download/VwapScanner), once per day. Called when auto-refresh ends at the close,
     /// and when the app is opened after the close (in case it was not running then). Nothing is saved for a day without results.
     /// </summary>
-    public async Task<bool> SaveDailyCsvIfDueAsync()
+    /// <summary>What the last save attempt did, in words (shown by the Settings "test" button).</summary>
+    public string LastSaveMessage { get; private set; } = "";
+
+    /// <param name="force">Test run: ignores the time of day, the weekend, replay mode and the saved-today flag, and names the files "-test".</param>
+    public async Task<bool> SaveDailyCsvIfDueAsync(bool force = false)
     {
-        if (!config.SaveCsvAtClose || config.Replaying) return false;
-        var now = DateTimeOffset.UtcNow.ToOffset(Ist);
-        if (now.DayOfWeek is DayOfWeek.Saturday or DayOfWeek.Sunday || now.TimeOfDay < MarketClose) return false;
+        if (!force)
+        {
+            if (!config.SaveCsvAtClose || config.Replaying) return false;
+            var now = DateTimeOffset.UtcNow.ToOffset(Ist);
+            if (now.DayOfWeek is DayOfWeek.Saturday or DayOfWeek.Sunday || now.TimeOfDay < MarketClose) return false;
+        }
         var today = IstToday();
-        if (Preferences.Default.Get(CsvSavedKey, "") == today) return false;
+        if (!force && Preferences.Default.Get(CsvSavedKey, "") == today) return false;
         EnsureHistory();
         List<VwapSignal> signals; List<(DateTimeOffset At, PortfolioPosition Position)> positions;
         lock (historyLock)
         {
-            if (seenDay != today) return false;
+            if (!force && seenDay != today) return false;
             signals = [.. signalHistory];
             positions = [.. positionHistory];
         }
-        if (signals.Count == 0 && positions.Count == 0) return false;
+        if (signals.Count == 0 && positions.Count == 0) { LastSaveMessage = "There are no rows in the grids yet, so there is nothing to save. Run a scan that finds signals first."; return false; }
         try
         {
-            var stamp = today.Replace("-", "") + "-close";
+            var stamp = today.Replace("-", "") + (force ? "-test" : "-close");
             var saved = false;
             if (signals.Count > 0) saved |= await saver.SaveCsvAsync($"vwap-signals-{stamp}.csv", GridCsv.SignalsCsv(signals)) is not null;
             if (positions.Count > 0) saved |= await saver.SaveCsvAsync($"vwap-portfolio-{stamp}.csv", GridCsv.PortfolioCsv(positions)) is not null;
-            if (!saved) { Update("Market closed. This Android version cannot save the CSV files automatically - use Export CSV."); return false; }
-            Preferences.Default.Set(CsvSavedKey, today);
-            var message = $"Market closed. Saved {signals.Count} signal row(s) and {positions.Count} portfolio row(s) to Download/VwapScanner.";
-            Update(message);
-            if (config.Notify) notifier.Notify(4, "VWAP Scanner", message);
+            if (!saved) { LastSaveMessage = "This Android version cannot save the CSV files automatically - use Export CSV."; if (!force) Update("Market closed. " + LastSaveMessage); return false; }
+            if (!force) Preferences.Default.Set(CsvSavedKey, today);
+            var message = $"{(force ? "Test: saved" : "Market closed. Saved")} {signals.Count} signal row(s) and {positions.Count} portfolio row(s) to Download/VwapScanner.";
+            LastSaveMessage = message;
+            if (!force) { Update(message); if (config.Notify) notifier.Notify(4, "VWAP Scanner", message); }
             return true;
         }
         catch (Exception e)
         {
-            Update("Market closed. Could not save the CSV files: " + e.Message);
+            LastSaveMessage = "Could not save the CSV files: " + e.Message;
+            if (!force) Update("Market closed. " + LastSaveMessage);
             return false;
         }
     }
