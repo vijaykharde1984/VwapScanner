@@ -77,6 +77,7 @@
             <!-- Totals of the portfolio grid. Shown on screen only: they are never part of the CSV files. -->
             <VerticalStackLayout x:Name="PortfolioTotalsBar" IsVisible="False" Spacing="2" Padding="8,6" BackgroundColor="#40808080">
                 <Label x:Name="InvestmentTotalLabel" FontAttributes="Bold" FontSize="14" />
+                <Label x:Name="CapitalTotalLabel" FontSize="12" />
                 <Label x:Name="ProfitLossTotalLabel" FontAttributes="Bold" FontSize="14" />
                 <Label x:Name="TrackingTotalLabel" FontAttributes="Bold" FontSize="13" IsVisible="False" />
                 <Label x:Name="TotalsNoteLabel" FontSize="11" />

@@ -125,6 +125,8 @@ public partial class MainPage : ContentPage
         var t = coordinator.PortfolioTotals();
         PortfolioTotalsBar.IsVisible = t.Rows > 0;
         if (t.Rows == 0) return;
+        CapitalTotalLabel.IsVisible = t.CapitalText is not null;
+        CapitalTotalLabel.Text = t.CapitalText ?? "";
         TrackingTotalLabel.IsVisible = t.TrackingText is not null;
         TrackingTotalLabel.Text = t.TrackingText is null ? "" : t.TrackingText + (t.TrackingStatus is null ? "" : "\n" + t.TrackingStatus);
         InvestmentTotalLabel.Text = $"Total investment (price x quantity): INR {t.Invested.ToString("N2", CultureInfo.InvariantCulture)}  ({t.Rows} row(s))";

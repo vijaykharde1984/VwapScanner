@@ -9,7 +9,7 @@ public sealed record HistoryChunk(int Epoch, bool Reset, IReadOnlyList<VwapSigna
 
 /// <summary>Totals shown under the portfolio grid (never written to CSV). Invested = sum of price x quantity of all rows; ProfitLoss = sum of (latest close - price) x quantity
 /// over the rows whose stock has a known close (PricedRows); AsOf = the time of those closes (HH:mm, "15:30" once the day is final).</summary>
-public sealed record PortfolioTotals(int Rows, decimal Invested, decimal ProfitLoss, int PricedRows, string? AsOf, string? TrackingText = null, string? TrackingStatus = null);
+public sealed record PortfolioTotals(int Rows, decimal Invested, decimal ProfitLoss, int PricedRows, string? AsOf, string? TrackingText = null, string? TrackingStatus = null, string? CapitalText = null);
 
 /// <summary>Shows Android notifications (implemented in Platforms/Android).</summary>
 public interface INotifier
@@ -96,6 +96,7 @@ public sealed class ScanCoordinator(ApiState state, AppConfig config, INotifier 
     public PortfolioTotals PortfolioTotals()
     {
         EnsureHistory();
+        var costs = Costs();
         lock (historyLock)
         {
             var latest = new Dictionary<string, DayOhlc>(StringComparer.OrdinalIgnoreCase);
@@ -111,7 +112,7 @@ public sealed class ScanCoordinator(ApiState state, AppConfig config, INotifier 
                 pnl += (o.Close - p.Price) * p.Quantity;
                 priced++;
             }
-            return new(positionHistory.Count, invested, pnl, priced, latest.Count == 0 ? null : latest.Values.Max(x => x.AsOf), ExitSummaryLocked(), TrackStatus.Length == 0 ? null : TrackStatus);
+            return new(positionHistory.Count, invested, pnl, priced, latest.Count == 0 ? null : latest.Values.Max(x => x.AsOf), ExitSummaryLocked(), TrackStatus.Length == 0 ? null : TrackStatus, CapitalTextLocked(costs));
         }
     }
 
@@ -242,9 +243,10 @@ public sealed class ScanCoordinator(ApiState state, AppConfig config, INotifier 
             await config.LoadSecretsAsync();
             // Between two auto scans there are as many new candles as minutes, so the lookback must cover them.
             var minLookback = auto ? config.AutoRefreshMinutes + 1 : 0;
-            var result = await Task.Run(() => state.RunAsync(mine.Token, msg => Update("Scanning... " + msg.Trim()), minLookback), mine.Token);
+            var (free, bought) = CapitalForScan();
+            var result = await Task.Run(() => state.RunAsync(mine.Token, msg => Update("Scanning... " + msg.Trim()), minLookback, free, s => bought.Contains(Key(s))), mine.Token);
             Apply(result, auto);
-            Update($"Last scan at {DateTime.Now:HH:mm:ss} (data as of {result.Scan.AsOf} IST).");
+            Update($"Last scan at {DateTime.Now:HH:mm:ss} (data as of {result.Scan.AsOf} IST). Capital available for new buys: INR {free.ToString("N0", CultureInfo.InvariantCulture)}.");
             return true;
         }
         catch (OperationCanceledException) { Update(ct.IsCancellationRequested ? "Stopped." : "Scan cancelled."); return false; }
@@ -584,6 +586,44 @@ public sealed class ScanCoordinator(ApiState state, AppConfig config, INotifier 
 
     private ExitRules Rules() => new(config.GuardEnabled, config.GuardArmPercent, config.GuardGivebackPercent, config.GuardFadeCandles,
         config.GuardBreakevenBps, config.AutoRefreshMinutes, config.ExitCloseTime);
+
+    // ---- capital balance ----
+    // The optimizer sizes every scan's positions against the whole Portfolio:Capital, so without a balance each scan would spend the full capital again.
+    // Balance = capital + net gain of the positions already sold - money tied up in positions still held (price x quantity + buy fees).
+    // A sale returns its money plus its gain, so the next scan can use it. The scan is then sized against this balance (see ApiState.RunAsync).
+
+    private (decimal Capital, decimal Held, decimal Realized) BalanceLocked(PortfolioOptions o)
+    {
+        decimal held = 0, realized = 0;
+        foreach (var (_, p) in positionHistory)
+            if (exitByRow.TryGetValue(PositionKey(p), out var e)) realized += e.NetGain ?? 0m;
+            else held += p.Notional + o.Fees.Cost(p.Notional, true);
+        return (o.Capital, held, realized);
+    }
+
+    private string? CapitalTextLocked(PortfolioOptions o)
+    {
+        if (positionHistory.Count == 0) return null;
+        var (cap, held, realized) = BalanceLocked(o);
+        var free = Math.Max(0m, cap + realized - held);
+        string N(decimal x) => x.ToString("N2", CultureInfo.InvariantCulture);
+        return $"Capital INR {N(cap)}: held in positions {N(held)}, realized net gain {(realized > 0 ? "+" : "")}{N(realized)}, available for new buys {N(free)}";
+    }
+
+    /// <summary>What the next scan may spend, and the signals that are already bought. For a different day than the one in the grids the whole capital is free.</summary>
+    private (decimal Free, HashSet<string> Bought) CapitalForScan()
+    {
+        EnsureHistory();
+        var o = Costs();
+        var day = config.Value("Scan:Date") is { Length: > 0 } d ? d : IstToday();
+        lock (historyLock)
+        {
+            if (seenDay != day) return (o.Capital, []);
+            var (cap, held, realized) = BalanceLocked(o);
+            var bought = positionHistory.Select(x => $"{x.Position.Symbol}|{x.Position.BarTime.ToString("O", CultureInfo.InvariantCulture)}").ToHashSet();
+            return (Math.Max(0m, cap + realized - held), bought);
+        }
+    }
 
     /// <summary>The Portfolio section of the settings: slippage and the fee model, used to put a net gain on each exit.</summary>
     private PortfolioOptions Costs() => config.Root.GetSection("Portfolio").Get<PortfolioOptions>() ?? new();

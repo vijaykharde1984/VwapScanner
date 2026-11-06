@@ -167,7 +167,10 @@ public sealed class ApiState(IConfiguration config, string contentRoot)
 
     /// <summary>One run of the whole business logic with the current settings: VWAP scan, then portfolio optimization of the signals.</summary>
     /// <param name="minLookback">Auto-refresh passes its interval so the candles between two scans are still checked.</param>
-    public async Task<RunResult> RunAsync(CancellationToken ct, Action<string>? progress = null, int minLookback = 0)
+    /// <param name="capital">The capital still free: cash not tied up in positions that are still held, plus gains already made. Null = the full Portfolio:Capital.
+    /// The risk limits are percentages of it, so they shrink with it.</param>
+    /// <param name="alreadyBought">Signals that already have a position today: they are not bought a second time, whatever the capital.</param>
+    public async Task<RunResult> RunAsync(CancellationToken ct, Action<string>? progress = null, int minLookback = 0, decimal? capital = null, Func<VwapSignal, bool>? alreadyBought = null)
     {
         ScanSettings scan; PortfolioOptions limits; string[] symbols; ScanRequest request;
         try
@@ -191,7 +194,14 @@ public sealed class ApiState(IConfiguration config, string contentRoot)
             if (api is null) throw new ZerodhaAuthException("Not connected to Zerodha. Open loginUrl in a browser.");
             master ??= await LoadMasterAsync(api, ct);
             var result = await new Scanner(api, master, candles).ScanAsync(symbols, request, ct, progress);
-            var plan = PortfolioOptimizer.Optimize(result.Signals, limits);
+            // The scan itself (and the signals grid) is unchanged; only what may be bought now is limited by the capital that is left.
+            IReadOnlyList<VwapSignal> candidates = alreadyBought is null ? result.Signals : result.Signals.Where(s => !alreadyBought(s)).ToList();
+            if (capital is { } free)
+            {
+                limits.Capital = Math.Max(free, 1m);
+                if (free < 1m) candidates = Array.Empty<VwapSignal>(); // nothing left to invest
+            }
+            var plan = PortfolioOptimizer.Optimize(candidates, limits);
             return new RunResult("ScalpVwap", scan.Symbols.Count > 0 ? "custom symbols" : scan.Universe, result, plan, OhlcOfSignals(result));
         }
         catch (ZerodhaAuthException) { Disconnect(); throw; }
