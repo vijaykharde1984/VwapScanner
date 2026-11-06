@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Configuration;
 using System.Globalization;
 using System.Text.Json;
 
@@ -145,7 +146,9 @@ public sealed class ScanCoordinator(ApiState state, AppConfig config, INotifier 
                     default: close++; break;
                 }
         var hold = positionHistory.Count - target - stop - reversal - breakeven - close;
-        return $"Exits: {target} target, {stop} stop, {reversal} reversal, {breakeven} breakeven, {close} at close-out, {hold} hold";
+        var net = exitByRow.Values.Sum(e => e.NetGain ?? 0m);
+        return $"Exits: {target} target, {stop} stop, {reversal} reversal, {breakeven} breakeven, {close} at close-out, {hold} hold. "
+            + $"Net gain of the exits: INR {(net > 0 ? "+" : "")}{net.ToString("N2", CultureInfo.InvariantCulture)} (after fees and slippage)";
     }
 
     /// <summary>Loads today's grid rows saved by an earlier run of the app (once), so a restart does not lose them.</summary>
@@ -179,6 +182,10 @@ public sealed class ScanCoordinator(ApiState state, AppConfig config, INotifier 
                             _ => new(ExitDecision.Close, "", 0, "Not reached before the close"),
                         };
                     }
+                // Exits saved before the net gain existed (or converted from the first version) get it now.
+                foreach (var (k, e) in exitByRow.Where(x => x.Value.NetGain is null && x.Value.Price > 0).ToList())
+                    if (positionHistory.Select(x => x.Position).FirstOrDefault(x => PositionKey(x) == k) is { } pos)
+                        exitByRow[k] = e with { NetGain = ExitEvaluator.NetGain(pos, e.Price, Costs()) };
                 historyEpoch++;
             }
             catch (Exception e) when (e is IOException or JsonException or UnauthorizedAccessException) { /* start with empty grids */ }
@@ -578,6 +585,9 @@ public sealed class ScanCoordinator(ApiState state, AppConfig config, INotifier 
     private ExitRules Rules() => new(config.GuardEnabled, config.GuardArmPercent, config.GuardGivebackPercent, config.GuardFadeCandles,
         config.GuardBreakevenBps, config.AutoRefreshMinutes, config.ExitCloseTime);
 
+    /// <summary>The Portfolio section of the settings: slippage and the fee model, used to put a net gain on each exit.</summary>
+    private PortfolioOptions Costs() => config.Root.GetSection("Portfolio").Get<PortfolioOptions>() ?? new();
+
     private List<(string Key, PortfolioPosition P)> OpenRows()
     {
         EnsureHistory();
@@ -711,6 +721,7 @@ public sealed class ScanCoordinator(ApiState state, AppConfig config, INotifier 
 
     private void RecordExit(string key, PortfolioPosition p, ExitDecision d)
     {
+        d = d with { NetGain = ExitEvaluator.NetGain(p, d.Price, Costs()) };
         lock (historyLock)
         {
             if (!exitByRow.TryAdd(key, d)) return;
@@ -719,7 +730,7 @@ public sealed class ScanCoordinator(ApiState state, AppConfig config, INotifier 
         }
         SaveHistory();
         var price = d.Price.ToString("0.00", CultureInfo.InvariantCulture);
-        AppLog.Info("Exit", $"{p.Symbol}: {d.Status} at {price} in the {d.Time} candle (bought {p.Price.ToString("0.00", CultureInfo.InvariantCulture)} at {p.BarTime:HH:mm}). {d.Reason}");
+        AppLog.Info("Exit", $"{p.Symbol}: {d.Status} at {price} (net gain {d.NetGain}) in the {d.Time} candle (bought {p.Price.ToString("0.00", CultureInfo.InvariantCulture)} at {p.BarTime:HH:mm}). {d.Reason}");
         if (config.Notify)
         {
             var title = d.Status switch
@@ -730,7 +741,7 @@ public sealed class ScanCoordinator(ApiState state, AppConfig config, INotifier 
                 ExitDecision.Reversal => $"SELL {p.Symbol}: reversal",
                 _ => $"SELL {p.Symbol}: square-off",
             };
-            notifier.Notify(10000 + (key.GetHashCode() & 0xFFFF), title, $"{d.Reason}. Sell near {price} (bought at {p.Price.ToString("0.00", CultureInfo.InvariantCulture)}).");
+            notifier.Notify(10000 + (key.GetHashCode() & 0xFFFF), title, $"{d.Reason}. Sell near {price} (bought at {p.Price.ToString("0.00", CultureInfo.InvariantCulture)}). Net gain INR {d.NetGain:+0.00;-0.00;0.00}.");
         }
         Update();
     }

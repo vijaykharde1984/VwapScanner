@@ -100,6 +100,16 @@ public static class ExitEvaluator
         return new(ExitDecision.Hold, "", 0, note, peak, peakTime, state);
     }
 
+    /// <summary>
+    /// Net gain in INR of buying the position at its price and selling all of it at <paramref name="exitPrice"/>: same formula as the portfolio's net_gain_at_vwap_inr
+    /// (sell slippage on the exit price, then the buy and sell fees), so the two columns can be compared. Negative for a loss.
+    /// </summary>
+    public static decimal NetGain(PortfolioPosition p, decimal exitPrice, PortfolioOptions o)
+    {
+        var sell = exitPrice * (1 - o.SlippageBpsPerSide / 10000m);
+        return Math.Round(p.Quantity * (sell - p.Price) - o.Fees.Cost(p.Quantity * p.Price, true) - o.Fees.Cost(p.Quantity * sell, false), 2);
+    }
+
     /// <summary>Least-squares slope of the values per step (price change per minute).</summary>
     private static decimal Slope(List<decimal> y)
     {

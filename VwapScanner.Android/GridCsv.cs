@@ -15,7 +15,7 @@ public static class GridCsv
     public static readonly string[] PositionHeaders =
         ["scanned_at", "symbol", "instrument_id", "bar_time", "price", "stop", "target", "vwap_exit", "quantity", "notional", "weight_percent",
          "risk_at_stop_inr", "risk_share_percent", "net_gain_at_vwap_inr", "score",
-         "day_open", "day_high", "day_low", "day_close", "ohlc_as_of", "price_x_quantity", "exit_status", "exit_time", "exit_price", "exit_reason", "peak_price", "peak_time", "guard_state"];
+         "day_open", "day_high", "day_low", "day_close", "ohlc_as_of", "price_x_quantity", "exit_status", "exit_time", "exit_price", "net_gain_at_exit_inr", "exit_reason", "peak_price", "peak_time", "guard_state"];
 
     private static string N(decimal x) => x.ToString("0.####", CultureInfo.InvariantCulture);
     private static string T(DateTimeOffset x) => x.ToString("yyyy-MM-ddTHH:mm:sszzz", CultureInfo.InvariantCulture);
@@ -24,8 +24,8 @@ public static class GridCsv
     private static string[] OhlcCells(DayOhlc? o) => o is null ? ["", "", "", "", ""] : [N(o.Open), N(o.High), N(o.Low), N(o.Close), o.AsOf];
 
     /// <summary>Exit Monitor columns: status, exit time, exit price, reason, peak price and time since the buy, Reversal Guard state; empty when the monitor is off.</summary>
-    private static string[] ExitCells(ExitDecision? e) => e is null ? ["", "", "", "", "", "", ""]
-        : [e.Status, e.Time, e.Price > 0 ? N(e.Price) : "", e.Reason.Replace(',', ';'), e.Peak > 0 ? N(e.Peak) : "", e.PeakTime, e.Guard];
+    private static string[] ExitCells(ExitDecision? e) => e is null ? ["", "", "", "", "", "", "", ""]
+        : [e.Status, e.Time, e.Price > 0 ? N(e.Price) : "", e.NetGain is { } g ? N(g) : "", e.Reason.Replace(',', ';'), e.Peak > 0 ? N(e.Peak) : "", e.PeakTime, e.Guard];
 
     public static string[] SignalCells(VwapSignal s, DayOhlc? ohlc = null) =>
         [s.Symbol, s.InstrumentId.ToString(CultureInfo.InvariantCulture), T(s.BarTime), N(s.Close), N(s.Vwap), N(s.StretchAtr), N(s.Atr), N(s.RelativeVolume), N(s.Score), N(s.Stop), N(s.Target), .. OhlcCells(ohlc)];

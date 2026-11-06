@@ -16,7 +16,7 @@ public partial class MainPage : ContentPage
     private RunResult? shown;
 
     private readonly ResultTable signalsTable = new(SignalHeaders, [110, 110, 200, 90, 90, 100, 80, 120, 80, 90, 90, 90, 90, 90, 90, 90]);
-    private readonly ResultTable portfolioTable = new(PositionHeaders, [90, 110, 110, 200, 90, 90, 90, 90, 80, 100, 120, 130, 140, 160, 80, 90, 90, 90, 90, 90, 130, 120, 70, 80, 260, 80, 70, 80]);
+    private readonly ResultTable portfolioTable = new(PositionHeaders, [90, 110, 110, 200, 90, 90, 90, 90, 80, 100, 120, 130, 140, 160, 80, 90, 90, 90, 90, 90, 130, 120, 70, 80, 130, 260, 80, 70, 80]);
     private int historyEpoch = -1, signalRows, positionRows;
 
     public MainPage(ApiState state, AppConfig config, ScanCoordinator coordinator, IFileSaver saver, IReminderScheduler reminders, IServiceProvider services)
