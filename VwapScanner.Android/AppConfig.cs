@@ -69,7 +69,7 @@ public sealed class AppConfig
     public bool SaveCsvAtClose => !bool.TryParse(Root["App:SaveCsvAtClose"], out var c) || c;
     /// <summary>The Exit Monitor: a separate loop that decides when each portfolio row should be sold.</summary>
     public bool ExitMonitorEnabled => !bool.TryParse(Root["App:ExitMonitorEnabled"], out var t) || t;
-    public int ExitCheckSeconds => int.TryParse(Root["App:ExitCheckSeconds"], NumberStyles.Integer, CultureInfo.InvariantCulture, out var m) ? Math.Clamp(m, 15, 300) : 30;
+    public int ExitCheckSeconds => int.TryParse(Root["App:ExitCheckSeconds"], NumberStyles.Integer, CultureInfo.InvariantCulture, out var m) ? Math.Clamp(m, 15, 300) : 15;
     /// <summary>Positions still held at this IST time are squared off (09:30 to 15:30, default 15:15).</summary>
     public TimeSpan ExitCloseTime => TimeOnly.TryParseExact(Root["App:ExitCloseTime"], "HH:mm", CultureInfo.InvariantCulture, DateTimeStyles.None, out var c)
         && c.ToTimeSpan() >= new TimeSpan(9, 30, 0) && c.ToTimeSpan() <= new TimeSpan(15, 30, 0) ? c.ToTimeSpan() : new TimeSpan(15, 15, 0);

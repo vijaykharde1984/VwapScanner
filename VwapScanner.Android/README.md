@@ -35,7 +35,7 @@ The API key/secret and saved Zerodha token of the web project are intentionally 
 
 ## Exit Monitor and Reversal Guard
 
-A separate loop (independent of the 5-minute scan) decides when each portfolio row should be sold. Every `App:ExitCheckSeconds` (default 30) it downloads the day's live 1-minute candles, including the minute still forming, and replays the candles after the buy:
+A separate loop (independent of the 5-minute scan) decides when each portfolio row should be sold. Every `App:ExitCheckSeconds` (default 15) it downloads the day's live 1-minute candles, including the minute still forming, and replays the candles after the buy:
 
 - `EXIT_TARGET`: a candle's high reaches the target.
 - `EXIT_STOP`: a candle's low reaches the stop. If one candle touches both, the stop wins (the candle does not say which came first).
