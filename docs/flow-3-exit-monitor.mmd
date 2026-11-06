@@ -1,0 +1,13 @@
+flowchart TD
+  M1["Every 15 seconds<br/>from 09:15 to the close-out time"] --> M2["Rows still held"]
+  M2 --> M3{"Any left?"}
+  M3 -- no --> M4["Monitor stops"]
+  M3 -- yes --> M5["One request per stock:<br/>the day's 1-minute candles from 09:15<br/>including the minute still forming"]
+  M5 --> M6["Exit evaluator replays the candles after the buy"]
+  M6 --> M7{"Exit decided?"}
+  M7 -- yes --> M8["Record the exit with its price and net gain<br/>after fees and slippage<br/>the money returns to the free capital"]
+  M8 --> M9["Save, send a SELL notification, refresh the grid"]
+  M7 -- no --> M10["Keep holding<br/>state shown: WATCH, ARMED, FADING or REPRIEVE"]
+  M9 --> M11["Wait 15 seconds"]
+  M10 --> M11
+  M11 --> M2

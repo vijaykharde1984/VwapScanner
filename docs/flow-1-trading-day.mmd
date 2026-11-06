@@ -1,0 +1,14 @@
+flowchart TD
+  A["09:10 reminder or alarm<br/>starts the foreground service"] --> B["Open the app and log in to Zerodha Kite<br/>the session ends at 06:00 IST each day"]
+  B --> C["Auto-refresh starts<br/>weekdays 09:15 to 15:30 IST"]
+  C --> D["Scan loop<br/>every 5 minutes"]
+  C --> E["Exit Monitor<br/>every 15 seconds"]
+  D --> F[("history.json<br/>signals, positions, exits")]
+  E --> F
+  D --> G["Grids, totals bar and notifications"]
+  E --> G
+  E --> H["15:15 close-out<br/>sell whatever is still held"]
+  H --> I["15:30 market close"]
+  I --> J["Final day open, high, low, close<br/>added to every row"]
+  J --> K["Two CSV files saved to<br/>Download/VwapScanner"]
+  K --> L["Foreground service stops"]

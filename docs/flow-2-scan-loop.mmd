@@ -1,0 +1,12 @@
+flowchart TD
+  S1["Every 5 minutes, or the Scan button"] --> S2["Free capital =<br/>capital + net gain of sold rows - money held in open rows<br/>plus the list of signals already bought"]
+  S2 --> S3["Load the stock list and 1-minute candles from Kite<br/>paced at 3 requests per second"]
+  S3 --> S4["VWAP strategy finds signals<br/>price stretched below VWAP, volume, score"]
+  S4 --> S5["Drop signals that already have a position"]
+  S5 --> S6{"Free capital at least 1 INR?"}
+  S6 -- no --> S7["Buy nothing"]
+  S6 -- yes --> S8["Portfolio optimizer sizes the buys against the free capital<br/>quantity, stop, target"]
+  S8 --> S9["Add the new rows and save history.json"]
+  S7 --> S9
+  S9 --> S10["Notify new signals and refresh the grids"]
+  S9 --> S11["Wake the Exit Monitor"]

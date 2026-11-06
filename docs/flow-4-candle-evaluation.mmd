@@ -1,0 +1,23 @@
+flowchart TD
+  C0["Next 1-minute candle after the buy"] --> C1{"Stop Reprieve wait running?"}
+  C1 -- yes --> W1{"High reaches the target?"}
+  W1 -- yes --> X1["EXIT_TARGET"]
+  W1 -- no --> W2{"Completed candle closes<br/>at or below the stop?"}
+  W2 -- yes --> X2["EXIT_STOP at that close"]
+  W2 -- no --> W3{"3 lower closes in a row,<br/>or no gain by the half-way point?"}
+  W3 -- yes --> X3["Wait cancelled<br/>EXIT_STOP at that close"]
+  W3 -- no --> W4["Keep waiting<br/>normal rules return when the wait ends"]
+  C1 -- no --> L1{"Low reaches the stop?<br/>after the guard armed: the breakeven level"}
+  L1 -- yes --> R1{"Plain stop, reprieve on and unused,<br/>price back above the stop,<br/>VWAP at least one stop distance above?"}
+  R1 -- yes --> R2["Start the 15 minute wait<br/>state REPRIEVE"]
+  R1 -- no --> R3{"Reversal Guard armed?"}
+  R3 -- yes --> X4["EXIT_BREAKEVEN"]
+  R3 -- no --> X5["EXIT_STOP"]
+  L1 -- no --> T1{"High reaches the target?"}
+  T1 -- yes --> X6["EXIT_TARGET"]
+  T1 -- no --> G1["Update the peak<br/>arm the guard at 50% of the way to the target"]
+  G1 --> G2{"Guard armed and candle completed?"}
+  G2 -- no --> N["Next candle<br/>after the last one: the close-out time gives EXIT_CLOSE, otherwise HOLD"]
+  G2 -- yes --> G3{"Close at breakeven, 40% of the gain given back,<br/>3 lower closes below VWAP,<br/>or the trend projects below breakeven?"}
+  G3 -- yes --> X7["EXIT_REVERSAL or EXIT_BREAKEVEN"]
+  G3 -- no --> N

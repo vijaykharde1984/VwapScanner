@@ -1,0 +1,85 @@
+<title>VWAP Scanner Flow</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;600&family=IBM+Plex+Mono:wght@500&display=swap">
+<style>
+/* Layout: one narrow reading column; each flow diagram in its own horizontally scrolling panel. */
+:root { --bg:#f5f6f8; --fg:#1b2430; --muted:#5a6676; --panel:#ffffff; --line:#d5dae2; --accent:#0b5cad; --mono:"IBM Plex Mono",ui-monospace,monospace; --sans:"IBM Plex Sans",system-ui,sans-serif; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --bg:#10161f; --fg:#e4e9f0; --muted:#97a3b4; --panel:#18202b; --line:#2b3645; --accent:#6db1ff; color-scheme:dark; } }
+:root[data-theme="dark"] { --bg:#10161f; --fg:#e4e9f0; --muted:#97a3b4; --panel:#18202b; --line:#2b3645; --accent:#6db1ff; color-scheme:dark; }
+body { background:var(--bg); color:var(--fg); font-family:var(--sans); font-size:15px; line-height:1.55; padding-block:24px 48px; padding-left:max(16px, env(safe-area-inset-left, 0px)); padding-right:max(16px, env(safe-area-inset-right, 0px)); }
+main { max-width:1000px; margin:0 auto; display:flex; flex-direction:column; gap:28px; }
+h1 { font-size:26px; line-height:1.2; margin:0 0 6px; text-wrap:balance; }
+h2 { font-size:18px; margin:0 0 4px; text-wrap:balance; }
+p { margin:0 0 10px; color:var(--muted); max-width:65ch; }
+section { min-width:0; }
+.diagram { background:var(--panel); border:1px solid var(--line); border-radius:6px; padding:16px; overflow-x:auto; }
+.diagram pre { margin:0; }
+table { border-collapse:collapse; width:100%; background:var(--panel); border:1px solid var(--line); }
+th, td { text-align:left; vertical-align:top; padding:8px 12px; border-bottom:1px solid var(--line); }
+th { font-family:var(--mono); font-size:13px; font-weight:500; white-space:nowrap; color:var(--accent); }
+.tablewrap { overflow-x:auto; }
+</style>
+<main>
+<header><h1>VWAP Scanner: end to end flow</h1><p>How the Android app scans, buys, watches and sells during one trading day, as of 6 November 2026.</p></header>
+<section><h2>1. A trading day, start to finish</h2><p>Two loops run side by side while the market is open. The scan finds and buys. The Exit Monitor decides when to sell. Both write to the same saved history.</p><div class="diagram"><pre class="mermaid">flowchart TD
+  A["09:10 reminder or alarm&lt;br/&gt;starts the foreground service"] --&gt; B["Open the app and log in to Zerodha Kite&lt;br/&gt;the session ends at 06:00 IST each day"]
+  B --&gt; C["Auto-refresh starts&lt;br/&gt;weekdays 09:15 to 15:30 IST"]
+  C --&gt; D["Scan loop&lt;br/&gt;every 5 minutes"]
+  C --&gt; E["Exit Monitor&lt;br/&gt;every 15 seconds"]
+  D --&gt; F[("history.json&lt;br/&gt;signals, positions, exits")]
+  E --&gt; F
+  D --&gt; G["Grids, totals bar and notifications"]
+  E --&gt; G
+  E --&gt; H["15:15 close-out&lt;br/&gt;sell whatever is still held"]
+  H --&gt; I["15:30 market close"]
+  I --&gt; J["Final day open, high, low, close&lt;br/&gt;added to every row"]
+  J --&gt; K["Two CSV files saved to&lt;br/&gt;Download/VwapScanner"]
+  K --&gt; L["Foreground service stops"]</pre></div></section><section><h2>2. The scan loop: finding and buying</h2><p>The capital balance is worked out first, so a scan can never spend more than what is free.</p><div class="diagram"><pre class="mermaid">flowchart TD
+  S1["Every 5 minutes, or the Scan button"] --&gt; S2["Free capital =&lt;br/&gt;capital + net gain of sold rows - money held in open rows&lt;br/&gt;plus the list of signals already bought"]
+  S2 --&gt; S3["Load the stock list and 1-minute candles from Kite&lt;br/&gt;paced at 3 requests per second"]
+  S3 --&gt; S4["VWAP strategy finds signals&lt;br/&gt;price stretched below VWAP, volume, score"]
+  S4 --&gt; S5["Drop signals that already have a position"]
+  S5 --&gt; S6{"Free capital at least 1 INR?"}
+  S6 -- no --&gt; S7["Buy nothing"]
+  S6 -- yes --&gt; S8["Portfolio optimizer sizes the buys against the free capital&lt;br/&gt;quantity, stop, target"]
+  S8 --&gt; S9["Add the new rows and save history.json"]
+  S7 --&gt; S9
+  S9 --&gt; S10["Notify new signals and refresh the grids"]
+  S9 --&gt; S11["Wake the Exit Monitor"]</pre></div></section><section><h2>3. The Exit Monitor loop: watching and selling</h2><p>It runs apart from the scan, so a slow scan never delays an exit. Both share one Kite connection and one request pacer.</p><div class="diagram"><pre class="mermaid">flowchart TD
+  M1["Every 15 seconds&lt;br/&gt;from 09:15 to the close-out time"] --&gt; M2["Rows still held"]
+  M2 --&gt; M3{"Any left?"}
+  M3 -- no --&gt; M4["Monitor stops"]
+  M3 -- yes --&gt; M5["One request per stock:&lt;br/&gt;the day's 1-minute candles from 09:15&lt;br/&gt;including the minute still forming"]
+  M5 --&gt; M6["Exit evaluator replays the candles after the buy"]
+  M6 --&gt; M7{"Exit decided?"}
+  M7 -- yes --&gt; M8["Record the exit with its price and net gain&lt;br/&gt;after fees and slippage&lt;br/&gt;the money returns to the free capital"]
+  M8 --&gt; M9["Save, send a SELL notification, refresh the grid"]
+  M7 -- no --&gt; M10["Keep holding&lt;br/&gt;state shown: WATCH, ARMED, FADING or REPRIEVE"]
+  M9 --&gt; M11["Wait 15 seconds"]
+  M10 --&gt; M11
+  M11 --&gt; M2</pre></div></section><section><h2>4. How one row is judged, candle by candle</h2><p>The evaluator replays every 1-minute candle after the buy in order, so a restart gives the same answer as running all day.</p><div class="diagram"><pre class="mermaid">flowchart TD
+  C0["Next 1-minute candle after the buy"] --&gt; C1{"Stop Reprieve wait running?"}
+  C1 -- yes --&gt; W1{"High reaches the target?"}
+  W1 -- yes --&gt; X1["EXIT_TARGET"]
+  W1 -- no --&gt; W2{"Completed candle closes&lt;br/&gt;at or below the stop?"}
+  W2 -- yes --&gt; X2["EXIT_STOP at that close"]
+  W2 -- no --&gt; W3{"3 lower closes in a row,&lt;br/&gt;or no gain by the half-way point?"}
+  W3 -- yes --&gt; X3["Wait cancelled&lt;br/&gt;EXIT_STOP at that close"]
+  W3 -- no --&gt; W4["Keep waiting&lt;br/&gt;normal rules return when the wait ends"]
+  C1 -- no --&gt; L1{"Low reaches the stop?&lt;br/&gt;after the guard armed: the breakeven level"}
+  L1 -- yes --&gt; R1{"Plain stop, reprieve on and unused,&lt;br/&gt;price back above the stop,&lt;br/&gt;VWAP at least one stop distance above?"}
+  R1 -- yes --&gt; R2["Start the 15 minute wait&lt;br/&gt;state REPRIEVE"]
+  R1 -- no --&gt; R3{"Reversal Guard armed?"}
+  R3 -- yes --&gt; X4["EXIT_BREAKEVEN"]
+  R3 -- no --&gt; X5["EXIT_STOP"]
+  L1 -- no --&gt; T1{"High reaches the target?"}
+  T1 -- yes --&gt; X6["EXIT_TARGET"]
+  T1 -- no --&gt; G1["Update the peak&lt;br/&gt;arm the guard at 50% of the way to the target"]
+  G1 --&gt; G2{"Guard armed and candle completed?"}
+  G2 -- no --&gt; N["Next candle&lt;br/&gt;after the last one: the close-out time gives EXIT_CLOSE, otherwise HOLD"]
+  G2 -- yes --&gt; G3{"Close at breakeven, 40% of the gain given back,&lt;br/&gt;3 lower closes below VWAP,&lt;br/&gt;or the trend projects below breakeven?"}
+  G3 -- yes --&gt; X7["EXIT_REVERSAL or EXIT_BREAKEVEN"]
+  G3 -- no --&gt; N</pre></div></section>
+<section><h2>Exit statuses</h2><div class="tablewrap"><table><tr><th scope="row">HOLD</th><td>Keep the position. Guard state: WATCH, ARMED, FADING, or REPRIEVE while a stop wait runs.</td></tr><tr><th scope="row">EXIT_TARGET</th><td>The high reached the target. Sell at the target.</td></tr><tr><th scope="row">EXIT_STOP</th><td>The stop was reached, or a stop wait ended badly. The reason column says which.</td></tr><tr><th scope="row">EXIT_BREAKEVEN</th><td>The price came back to the buy price after the guard armed.</td></tr><tr><th scope="row">EXIT_REVERSAL</th><td>A rise is fading. Sell before it turns into a loss.</td></tr><tr><th scope="row">EXIT_CLOSE</th><td>Still held at the close-out time (15:15 by default). Sell at the market.</td></tr></table></div></section>
+<section><h2>What is saved where</h2><div class="tablewrap"><table><tr><th scope="row">history.json</th><td>Signals, portfolio rows, exits and day OHLC for today. Read again after an app restart.</td></tr><tr><th scope="row">CSV files</th><td>vwap-signals and vwap-portfolio, saved to Download/VwapScanner at the close.</td></tr><tr><th scope="row">Daily log</th><td>Kite and app errors with secrets removed. Share it from Settings.</td></tr><tr><th scope="row">Settings</th><td>Capital and risk limits, auto-refresh, Exit Monitor, Reversal Guard, Stop Reprieve.</td></tr></table></div></section>
+</main>
