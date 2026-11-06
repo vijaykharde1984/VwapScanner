@@ -146,6 +146,25 @@ public sealed class ApiState(IConfiguration config, string contentRoot)
         finally { gate.Release(); }
     }
 
+    /// <summary>
+    /// Fresh 1-minute candles of one stock from <paramref name="from"/> until now, including the minute still forming, for the target tracker.
+    /// It does not wait for a running scan (it never takes the scan gate for long) and never touches the shared completed-candle cache.
+    /// Returns null when the instrument list is not loaded yet (the first scan loads it).
+    /// </summary>
+    public async Task<List<Candle>?> LiveCandlesAsync(string symbol, DateTimeOffset from, CancellationToken ct)
+    {
+        var client = api ?? throw new ZerodhaAuthException("Not connected to Zerodha.");
+        var map = master;
+        if (map is null) return null;
+        if (!map.TryGetValue(symbol, out var token)) return [];
+        try
+        {
+            var now = DateTimeOffset.UtcNow.ToOffset(Ist);
+            return (await client.MinuteCandlesAsync(token, from, now.AddMinutes(1), ct)).OrderBy(c => c.Time).ToList();
+        }
+        catch (ZerodhaAuthException) { Disconnect(); throw; }
+    }
+
     /// <summary>One run of the whole business logic with the current settings: VWAP scan, then portfolio optimization of the signals.</summary>
     /// <param name="minLookback">Auto-refresh passes its interval so the candles between two scans are still checked.</param>
     public async Task<RunResult> RunAsync(CancellationToken ct, Action<string>? progress = null, int minLookback = 0)

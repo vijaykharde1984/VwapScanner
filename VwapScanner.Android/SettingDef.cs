@@ -47,6 +47,22 @@ public sealed record SettingDef(string Key, string Label, SettingKind Kind, stri
         new("App:AutoRefreshMinutes", "Auto-refresh every (minutes)", SettingKind.Integer, "Auto-refresh",
             "Used by the Auto-refresh switch on the main screen. The lookback is raised automatically so no candle between two scans is missed.", 1, 120),
         new("App:Notify", "Notify on new signals", SettingKind.Bool, "Auto-refresh", "Android notification when an auto-refresh finds a signal not seen before."),
+        new("App:ExitMonitorEnabled", "Exit Monitor", SettingKind.Bool, "Exit Monitor",
+            "A separate loop watches every portfolio row with live 1-minute candles and says when to sell: EXIT_TARGET, EXIT_STOP, EXIT_REVERSAL, EXIT_BREAKEVEN, or EXIT_CLOSE at the close-out time (grid and CSV column exit_status). Off = those columns stay empty."),
+        new("App:ExitCheckSeconds", "Check exits every (seconds)", SettingKind.Integer, "Exit Monitor",
+            "Pause between two checks. Each check downloads one request per stock that is still held (Kite allows about 3 a second, shared with the scan).", 15, 300),
+        new("App:ExitCloseTime", "Close-out time (IST)", SettingKind.ShortTime, "Exit Monitor",
+            "HH:mm between 09:30 and 15:30 (default 15:15). Positions still held then get EXIT_CLOSE: sell at the market. Brokers usually square off intraday positions around 15:15-15:20."),
+        new("App:GuardEnabled", "Reversal Guard", SettingKind.Bool, "Reversal Guard",
+            "Protects a position that rose toward the target and is now fading, so a gain does not turn into a loss. Off = only target, stop and close-out."),
+        new("App:GuardArmPercent", "Arm after (% of the way to target)", SettingKind.Decimal, "Reversal Guard",
+            "The guard arms when the highest price since the buy has covered this share of the distance from the buy price to the target. Once armed, the stop moves up to the buy price (plus the buffer below).", 10, 100),
+        new("App:GuardGivebackPercent", "Sell when this % of the peak gain is given back", SettingKind.Decimal, "Reversal Guard",
+            "Example: bought 400, peak 408, 40% of the 8 gain = 3.2, so a close at 404.8 or lower sells (EXIT_REVERSAL).", 10, 100),
+        new("App:GuardFadeCandles", "Lower closes in a row (below VWAP)", SettingKind.Integer, "Reversal Guard",
+            "Sell when the price closes lower this many times in a row while below the day's VWAP.", 2, 10),
+        new("App:GuardBreakevenBps", "Breakeven buffer (bps)", SettingKind.Decimal, "Reversal Guard",
+            "Added to the buy price for the breakeven level, to cover brokerage and slippage. 5 bps = 0.05%: 400 becomes 400.20.", 0, 100),
     ];
 
     /// <summary>Checks and normalizes what the user typed; on failure <paramref name="error"/> says what is expected.</summary>

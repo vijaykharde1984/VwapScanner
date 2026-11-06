@@ -1,12 +1,15 @@
 namespace VwapScanner.Mobile;
 
 /// <summary>
-/// A simple scrollable table (header row + data rows) for the result grids. Rows are only ever appended; the rows added by the latest refresh are tinted
+/// A simple scrollable table (header row + data rows) for the result grids. The header row stays fixed at the top while the data rows scroll up and down
+/// underneath it; both scroll sideways together. Rows are only ever appended; the rows added by the latest refresh are tinted
 /// so new results stand out. The newest <see cref="MaxRows"/> rows are kept on screen; the full history stays in ScanCoordinator for the CSV export.
 /// </summary>
 public sealed class ResultTable
 {
     public const int MaxRows = 500;
+    /// <summary>Height of the data area in device-independent pixels (about eight rows); more rows scroll inside it, below the fixed header.</summary>
+    public const double BodyHeight = 300;
     private static readonly Color HeaderTint = Color.FromRgba(128, 128, 128, 64);
     private static readonly Color NewTint = Color.FromRgba(255, 165, 0, 56);
 
@@ -20,10 +23,24 @@ public sealed class ResultTable
     public ResultTable(string[] headers, double[] widths)
     {
         this.widths = widths;
+        var total = widths.Sum();
+        var headerRow = MakeRow(headers, header: true);
+        headerRow.WidthRequest = total;
+        rows.WidthRequest = total;
+        // Header (not scrolled vertically) + data rows (own vertical scroll), inside one horizontal scroll so they move sideways together.
+        var body = new ScrollView
+        {
+            Orientation = ScrollOrientation.Vertical,
+            HeightRequest = 0,
+            WidthRequest = total,
+            Content = rows,
+        };
+        // A ScrollView does not shrink to its content by itself, so its height is set explicitly: as tall as the rows, up to BodyHeight (then they scroll).
+        rows.SizeChanged += (_, _) => body.HeightRequest = Math.Min(BodyHeight, Math.Max(rows.Height, 0));
         View = new ScrollView
         {
             Orientation = ScrollOrientation.Horizontal,
-            Content = new VerticalStackLayout { Spacing = 0, Children = { MakeRow(headers, header: true), rows } },
+            Content = new VerticalStackLayout { Spacing = 0, Children = { headerRow, body } },
         };
     }
 

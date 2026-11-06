@@ -32,3 +32,14 @@ Surviving a closed app: while auto-refresh is on, the app records "on for today"
 
 Other settings (fees, redirect URL) are in `Resources/Raw/appsettings.json`, same names as the web API.
 The API key/secret and saved Zerodha token of the web project are intentionally not copied.
+
+## Exit Monitor and Reversal Guard
+
+A separate loop (independent of the 5-minute scan) decides when each portfolio row should be sold. Every `App:ExitCheckSeconds` (default 30) it downloads the day's live 1-minute candles, including the minute still forming, and replays the candles after the buy:
+
+- `EXIT_TARGET`: a candle's high reaches the target.
+- `EXIT_STOP`: a candle's low reaches the stop. If one candle touches both, the stop wins (the candle does not say which came first).
+- `EXIT_CLOSE`: still held at the close-out time (`App:ExitCloseTime`, default 15:15): sell at the market.
+- Reversal Guard, for a position that has risen and is now fading. It arms when the peak has covered 50% of the way to the target. From then on the stop moves up to the buy price plus a 5 bps buffer (`EXIT_BREAKEVEN`), and after a completed candle the row is sold as `EXIT_REVERSAL` when 40% of the peak gain is given back, or 3 lower closes in a row happen below the day's VWAP, or the trend of the last closes, projected one refresh interval ahead, ends at or below the breakeven level.
+
+Guard state while holding: `WATCH`, `ARMED`, `FADING`. Grid and CSV columns: `exit_status`, `exit_time`, `exit_price`, `exit_reason`, `peak_price`, `peak_time`, `guard_state`. A notification is posted for each sell decision. It detects the exit; it does not place orders. It runs while the app process is alive: the foreground service keeps it alive during auto-refresh.

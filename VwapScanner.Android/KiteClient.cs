@@ -18,6 +18,7 @@ public sealed class KiteClient : IDisposable
     private static readonly TimeSpan Ist = TimeSpan.FromHours(5.5);
     private readonly Kite kite;
     private DateTime next = DateTime.MinValue;
+    private readonly object paceLock = new();
 
     public KiteClient(string apiKey, string accessToken)
     {
@@ -66,9 +67,16 @@ public sealed class KiteClient : IDisposable
     {
         for (var attempt = 0; ; attempt++)
         {
-            var wait = next - DateTime.UtcNow;
+            // Each call reserves its own slot, so the scan and the target tracker (two loops sharing this client) can never fire together.
+            TimeSpan wait;
+            lock (paceLock)
+            {
+                var now = DateTime.UtcNow;
+                var start = next > now ? next : now;
+                next = start.AddMilliseconds(380);
+                wait = start - now;
+            }
             if (wait > TimeSpan.Zero) await Task.Delay(wait, ct);
-            next = DateTime.UtcNow.AddMilliseconds(380);
             try { return await Task.Run(call, ct); }
             catch (TokenException e) { throw new ZerodhaAuthException("Zerodha rejected the access token (it expires every day). Run again with --login. " + e.Message); }
             catch (NetworkException e) when (attempt < 3) { await Task.Delay(1000 * (attempt + 1), ct); _ = e; }

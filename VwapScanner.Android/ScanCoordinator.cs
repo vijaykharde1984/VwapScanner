@@ -8,7 +8,7 @@ public sealed record HistoryChunk(int Epoch, bool Reset, IReadOnlyList<VwapSigna
 
 /// <summary>Totals shown under the portfolio grid (never written to CSV). Invested = sum of price x quantity of all rows; ProfitLoss = sum of (latest close - price) x quantity
 /// over the rows whose stock has a known close (PricedRows); AsOf = the time of those closes (HH:mm, "15:30" once the day is final).</summary>
-public sealed record PortfolioTotals(int Rows, decimal Invested, decimal ProfitLoss, int PricedRows, string? AsOf);
+public sealed record PortfolioTotals(int Rows, decimal Invested, decimal ProfitLoss, int PricedRows, string? AsOf, string? TrackingText = null, string? TrackingStatus = null);
 
 /// <summary>Shows Android notifications (implemented in Platforms/Android).</summary>
 public interface INotifier
@@ -73,10 +73,16 @@ public sealed class ScanCoordinator(ApiState state, AppConfig config, INotifier 
 
     private sealed record HistoryPosition(DateTimeOffset At, PortfolioPosition Position);
     private sealed record HistoryFile(string Day, List<VwapSignal> Signals, List<HistoryPosition> Positions, List<string> Seen, List<string> PositionSeen,
-        Dictionary<string, DayOhlc>? Ohlc = null);
+        Dictionary<string, DayOhlc>? Ohlc = null, Dictionary<string, LegacyOutcome>? Outcomes = null, Dictionary<string, ExitDecision>? Exits = null);
+    /// <summary>The first version of target tracking stored TARGET_HIT / STOP_HIT / NOT_HIT here; read once and converted to exit decisions.</summary>
+    private sealed record LegacyOutcome(string Status, string Time);
 
     // Day open/high/low/close of each row (signal key / position key), as of the scan that found it; replaced by the final values after the close.
     private readonly Dictionary<string, DayOhlc> ohlcByRow = [];
+    // Portfolio rows the Exit Monitor has decided to sell (target, stop, breakeven, reversal or close-out), by position key. Rows still held are not stored here.
+    private readonly Dictionary<string, ExitDecision> exitByRow = [];
+    // Rows still held: their peak price and Reversal Guard state as of the last check (in memory only; rebuilt from the candles at the next check).
+    private readonly Dictionary<string, ExitDecision> liveByRow = [];
     private const string OhlcFinalKey = "ohlc_final_date";
 
     private static string PositionKey(PortfolioPosition p) =>
@@ -104,12 +110,43 @@ public sealed class ScanCoordinator(ApiState state, AppConfig config, INotifier 
                 pnl += (o.Close - p.Price) * p.Quantity;
                 priced++;
             }
-            return new(positionHistory.Count, invested, pnl, priced, latest.Count == 0 ? null : latest.Values.Max(x => x.AsOf));
+            return new(positionHistory.Count, invested, pnl, priced, latest.Count == 0 ? null : latest.Values.Max(x => x.AsOf), ExitSummaryLocked(), TrackStatus.Length == 0 ? null : TrackStatus);
         }
     }
 
     public DayOhlc? OhlcFor(VwapSignal s) { lock (historyLock) return ohlcByRow.GetValueOrDefault(Key(s)); }
     public DayOhlc? OhlcFor(PortfolioPosition p) { lock (historyLock) return ohlcByRow.GetValueOrDefault(PositionKey(p)); }
+
+    /// <summary>The Exit Monitor's answer for a portfolio row: the sell decision, or HOLD with the peak and Reversal Guard state. Null when the monitor is off or a past day is replayed.</summary>
+    public ExitDecision? ExitFor(PortfolioPosition p)
+    {
+        var key = PositionKey(p);
+        lock (historyLock)
+        {
+            if (exitByRow.TryGetValue(key, out var e)) return e;
+            if (!config.ExitMonitorEnabled || config.Replaying) return null;
+            return liveByRow.GetValueOrDefault(key) ?? (config.GuardEnabled ? ExitDecision.Holding with { Guard = ExitDecision.Watch } : ExitDecision.Holding);
+        }
+    }
+
+    /// <summary>"Exits: 3 target, 1 stop, ..., 6 hold" (caller holds historyLock); null when the monitor is off and nothing was recorded.</summary>
+    private string? ExitSummaryLocked()
+    {
+        if (positionHistory.Count == 0 || (!config.ExitMonitorEnabled && exitByRow.Count == 0) || config.Replaying) return null;
+        int target = 0, stop = 0, reversal = 0, breakeven = 0, close = 0;
+        foreach (var (_, p) in positionHistory)
+            if (exitByRow.TryGetValue(PositionKey(p), out var e))
+                switch (e.Status)
+                {
+                    case ExitDecision.Target: target++; break;
+                    case ExitDecision.Stop: stop++; break;
+                    case ExitDecision.Reversal: reversal++; break;
+                    case ExitDecision.Breakeven: breakeven++; break;
+                    default: close++; break;
+                }
+        var hold = positionHistory.Count - target - stop - reversal - breakeven - close;
+        return $"Exits: {target} target, {stop} stop, {reversal} reversal, {breakeven} breakeven, {close} at close-out, {hold} hold";
+    }
 
     /// <summary>Loads today's grid rows saved by an earlier run of the app (once), so a restart does not lose them.</summary>
     private void EnsureHistory()
@@ -129,6 +166,19 @@ public sealed class ScanCoordinator(ApiState state, AppConfig config, INotifier 
                 signalHistory.AddRange(file.Signals);
                 positionHistory.AddRange(file.Positions.Select(p => (p.At, p.Position)));
                 if (file.Ohlc is not null) foreach (var (k, v) in file.Ohlc) ohlcByRow[k] = v;
+                if (file.Exits is not null) foreach (var (k, v) in file.Exits) exitByRow[k] = v;
+                if (file.Outcomes is not null)
+                    foreach (var (k, o) in file.Outcomes)
+                    {
+                        if (exitByRow.ContainsKey(k)) continue;
+                        var pos = positionHistory.Select(x => x.Position).FirstOrDefault(x => PositionKey(x) == k);
+                        exitByRow[k] = o.Status switch
+                        {
+                            "TARGET_HIT" => new(ExitDecision.Target, o.Time, pos?.Target ?? 0, "Target reached"),
+                            "STOP_HIT" => new(ExitDecision.Stop, o.Time, pos?.Stop ?? 0, "Stop reached"),
+                            _ => new(ExitDecision.Close, "", 0, "Not reached before the close"),
+                        };
+                    }
                 historyEpoch++;
             }
             catch (Exception e) when (e is IOException or JsonException or UnauthorizedAccessException) { /* start with empty grids */ }
@@ -140,7 +190,7 @@ public sealed class ScanCoordinator(ApiState state, AppConfig config, INotifier 
         HistoryFile snapshot;
         lock (historyLock)
             snapshot = new(seenDay, [.. signalHistory], [.. positionHistory.Select(x => new HistoryPosition(x.At, x.Position))], [.. seen], [.. positionSeen],
-                new Dictionary<string, DayOhlc>(ohlcByRow));
+                new Dictionary<string, DayOhlc>(ohlcByRow), null, new Dictionary<string, ExitDecision>(exitByRow));
         try
         {
             var temp = HistoryPath + ".tmp";
@@ -231,7 +281,7 @@ public sealed class ScanCoordinator(ApiState state, AppConfig config, INotifier 
         if (r.Scan.Date != seenDay)
         {
             seen.Clear(); seenDay = r.Scan.Date;
-            lock (historyLock) { signalHistory.Clear(); positionHistory.Clear(); positionSeen.Clear(); ohlcByRow.Clear(); historyEpoch++; }
+            lock (historyLock) { signalHistory.Clear(); positionHistory.Clear(); positionSeen.Clear(); ohlcByRow.Clear(); exitByRow.Clear(); liveByRow.Clear(); historyEpoch++; }
         }
         var fresh = r.Scan.Signals.Where(s => seen.Add(Key(s))).ToList();
         lock (historyLock)
@@ -250,6 +300,7 @@ public sealed class ScanCoordinator(ApiState state, AppConfig config, INotifier 
         SaveHistory();
         NewKeys = fresh.Select(Key).ToHashSet();
         Last = r;
+        EnsureTracker(); // new portfolio rows are watched from now on (the Exit Monitor runs on its own, apart from the scans)
         if (auto && fresh.Count > 0 && config.Notify)
         {
             var top = fresh.OrderByDescending(s => s.Score).Take(3)
@@ -278,6 +329,7 @@ public sealed class ScanCoordinator(ApiState state, AppConfig config, INotifier 
         EnsureService();
         Update($"Auto-refresh on: every {config.AutoRefreshMinutes} min until 15:30 IST.");
         _ = Task.Run(() => LoopAsync(cts));
+        EnsureTracker();
         return true;
     }
 
@@ -323,6 +375,7 @@ public sealed class ScanCoordinator(ApiState state, AppConfig config, INotifier 
     /// </summary>
     public async Task<bool> AutoStartIfDefaultAsync()
     {
+        EnsureTracker(); // rows saved by an earlier run of the app are watched again
         if (!config.AutoStart || AutoRunning || Busy || config.Replaying || !state.Connected) return false;
         if (Preferences.Default.Get(StoppedKey, "") == IstToday()) return false;
         var now = DateTimeOffset.UtcNow.ToOffset(Ist);
@@ -422,6 +475,7 @@ public sealed class ScanCoordinator(ApiState state, AppConfig config, INotifier 
     /// <summary>After the close: updates open/high/low/close of every row of today with the day's final values (grids and CSV), then saves the CSV files.</summary>
     public async Task FinalizeDayAsync()
     {
+        await FinishTrackingAsync();
         await UpdateFinalOhlcAsync();
         await SaveDailyCsvIfDueAsync();
     }
@@ -492,7 +546,7 @@ public sealed class ScanCoordinator(ApiState state, AppConfig config, INotifier 
             var stamp = today.Replace("-", "") + (force ? "-test" : "-close");
             var saved = false;
             if (signals.Count > 0) saved |= await saver.SaveCsvAsync($"vwap-signals-{stamp}.csv", GridCsv.SignalsCsv(signals, OhlcFor)) is not null;
-            if (positions.Count > 0) saved |= await saver.SaveCsvAsync($"vwap-portfolio-{stamp}.csv", GridCsv.PortfolioCsv(positions, x => OhlcFor(x))) is not null;
+            if (positions.Count > 0) saved |= await saver.SaveCsvAsync($"vwap-portfolio-{stamp}.csv", GridCsv.PortfolioCsv(positions, x => OhlcFor(x), ExitFor)) is not null;
             if (!saved) { LastSaveMessage = "This Android version cannot save the CSV files automatically - use Export CSV."; if (!force) Update("Market closed. " + LastSaveMessage); return false; }
             if (!force) Preferences.Default.Set(CsvSavedKey, today);
             var message = $"{(force ? "Test: saved" : "Market closed. Saved")} {signals.Count} signal row(s) and {positions.Count} portfolio row(s) to Download/VwapScanner.";
@@ -508,5 +562,186 @@ public sealed class ScanCoordinator(ApiState state, AppConfig config, INotifier 
             if (!force) Update("Market closed. " + LastSaveMessage);
             return false;
         }
+    }
+
+    // ---- Exit Monitor ----
+    // A separate loop from the scans. Every ExitCheckSeconds it downloads the day's 1-minute candles (including the minute still forming) of each stock that is
+    // still held and lets ExitEvaluator decide: sell at the target, at the stop, when the Reversal Guard sees a rise fading, or at the close-out time.
+    // It shares nothing with the scan except the Kite connection (whose calls are paced together), and it never touches the scan's candle cache.
+    // The rules themselves are documented on ExitEvaluator.
+
+    private CancellationTokenSource? trackCts;
+    private Task? trackTask;
+    /// <summary>One line about the Exit Monitor for the totals bar (last check, or why it is not checking).</summary>
+    public string TrackStatus { get; private set; } = "";
+
+    private ExitRules Rules() => new(config.GuardEnabled, config.GuardArmPercent, config.GuardGivebackPercent, config.GuardFadeCandles,
+        config.GuardBreakevenBps, config.AutoRefreshMinutes, config.ExitCloseTime);
+
+    private List<(string Key, PortfolioPosition P)> OpenRows()
+    {
+        EnsureHistory();
+        lock (historyLock)
+        {
+            if (seenDay != IstToday()) return [];
+            return positionHistory.Select(x => (Key: PositionKey(x.Position), P: x.Position)).Where(x => !exitByRow.ContainsKey(x.Key)).ToList();
+        }
+    }
+
+    private void SetTrackStatus(string text) { TrackStatus = text; Update(); }
+
+    /// <summary>Starts the Exit Monitor when there is something to watch and none is running. Safe to call at any time; it returns at once.</summary>
+    public void EnsureTracker(bool afterClose = false)
+    {
+        if (!config.ExitMonitorEnabled || config.Replaying || !state.Connected) return;
+        var now = DateTimeOffset.UtcNow.ToOffset(Ist);
+        if (now.DayOfWeek is DayOfWeek.Saturday or DayOfWeek.Sunday) return;
+        if (now.TimeOfDay >= StopAfter && !afterClose) return;
+        if (OpenRows().Count == 0) return;
+        CancellationTokenSource cts;
+        lock (sync)
+        {
+            if (trackCts is not null) return;
+            cts = trackCts = new CancellationTokenSource();
+        }
+        trackTask = Task.Run(() => TrackLoopAsync(cts));
+    }
+
+    /// <summary>After the close: lets the Exit Monitor settle every row (square-off) before the CSV files are written.</summary>
+    private async Task FinishTrackingAsync()
+    {
+        var now = DateTimeOffset.UtcNow.ToOffset(Ist);
+        if (!config.ExitMonitorEnabled || config.Replaying || now.DayOfWeek is DayOfWeek.Saturday or DayOfWeek.Sunday || now.TimeOfDay < MarketClose) return;
+        EnsureTracker(afterClose: true);
+        if (trackTask is { } t)
+        {
+            try { await t.WaitAsync(TimeSpan.FromMinutes(2)); }
+            catch (TimeoutException) { /* it carries on; the CSV then shows HOLD for rows it has not settled */ }
+        }
+    }
+
+    private async Task TrackLoopAsync(CancellationTokenSource cts)
+    {
+        var ct = cts.Token;
+        var failing = false;
+        try
+        {
+            AppLog.Info("Exit", "Exit Monitor started.");
+            while (!ct.IsCancellationRequested)
+            {
+                var now = DateTimeOffset.UtcNow.ToOffset(Ist);
+                if (now.DayOfWeek is DayOfWeek.Saturday or DayOfWeek.Sunday || !config.ExitMonitorEnabled) break;
+                if (now.TimeOfDay < MarketOpen) { SetTrackStatus("Exit Monitor waits for the market to open (09:15 IST)."); await Task.Delay(TimeSpan.FromSeconds(30), ct); continue; }
+                var closeOut = config.ExitCloseTime;
+                var final = now.TimeOfDay >= closeOut + TimeSpan.FromSeconds(5); // the last candle before the close-out time is complete
+                if (now.TimeOfDay >= closeOut && !final) { await Task.Delay(TimeSpan.FromSeconds(3), ct); continue; }
+                var open = OpenRows();
+                if (open.Count == 0) { SetTrackStatus("Exit Monitor: every row has an exit."); break; }
+                try
+                {
+                    await TrackCycleAsync(open, final, ct);
+                    failing = false;
+                    if (final && OpenRows().Count == 0) { FinishSummary(); break; }
+                }
+                catch (ZerodhaAuthException e)
+                {
+                    AppLog.Error("Exit", e);
+                    SetTrackStatus("Exit Monitor stopped: the Zerodha session ended - log in again.");
+                    if (config.Notify) notifier.Notify(2, "VWAP Scanner", "Exit Monitor stopped: the Zerodha session ended. Open the app and log in again.");
+                    break;
+                }
+                catch (ZerodhaException e)
+                {
+                    if (!failing) AppLog.Error("Exit", e, "Exit check failed; retrying");
+                    failing = true;
+                    SetTrackStatus("Exit check failed (" + e.Message + "). Trying again.");
+                }
+                var wait = TimeSpan.FromSeconds(failing ? Math.Min(30, config.ExitCheckSeconds) : config.ExitCheckSeconds);
+                var untilCloseOut = closeOut + TimeSpan.FromSeconds(6) - DateTimeOffset.UtcNow.ToOffset(Ist).TimeOfDay;
+                if (untilCloseOut > TimeSpan.Zero && untilCloseOut < wait) wait = untilCloseOut; // be there right after the close-out time
+                await Task.Delay(wait, ct);
+            }
+        }
+        catch (OperationCanceledException) { }
+        catch (Exception e) { AppLog.Error("Exit", e); SetTrackStatus("Exit Monitor stopped by an unexpected error: " + e.Message); }
+        finally
+        {
+            lock (sync) { if (ReferenceEquals(trackCts, cts)) trackCts = null; }
+            cts.Dispose();
+            AppLog.Info("Exit", "Exit Monitor ended.");
+        }
+    }
+
+    private async Task TrackCycleAsync(List<(string Key, PortfolioPosition P)> open, bool final, CancellationToken ct)
+    {
+        var rules = Rules();
+        var today = DateOnly.FromDateTime(DateTimeOffset.UtcNow.ToOffset(Ist).DateTime);
+        var dayOpen = new DateTimeOffset(today.ToDateTime(new TimeOnly(9, 15)), Ist); // from the open: the VWAP needs the whole day
+        foreach (var group in open.GroupBy(x => x.P.Symbol, StringComparer.OrdinalIgnoreCase))
+        {
+            ct.ThrowIfCancellationRequested();
+            // One download per stock serves all of its open rows (a stock can be in the portfolio more than once).
+            var candles = await state.LiveCandlesAsync(group.Key, dayOpen, ct);
+            if (candles is null) { SetTrackStatus("Exit Monitor waits for the first scan to load the stock list."); return; }
+            var now = DateTimeOffset.UtcNow.ToOffset(Ist);
+            foreach (var (key, p) in group)
+            {
+                var d = ExitEvaluator.Evaluate(p, candles, now, rules, final);
+                if (d.IsExit) RecordExit(key, p, d); else SetLive(key, d);
+            }
+        }
+        int left, armed;
+        lock (historyLock)
+        {
+            left = positionHistory.Count(x => !exitByRow.ContainsKey(PositionKey(x.Position)));
+            armed = liveByRow.Count(x => !exitByRow.ContainsKey(x.Key) && x.Value.Guard is ExitDecision.Armed or ExitDecision.Fading);
+        }
+        SetTrackStatus($"Exit Monitor: {left} row(s) held ({armed} armed), last check {DateTime.Now:HH:mm:ss} (every {config.ExitCheckSeconds} s).");
+    }
+
+    private void SetLive(string key, ExitDecision d)
+    {
+        lock (historyLock)
+        {
+            var before = liveByRow.TryGetValue(key, out var old) ? old.Guard : (config.GuardEnabled ? ExitDecision.Watch : "");
+            liveByRow[key] = d;
+            if (before != d.Guard) historyEpoch++; // the grid redraws with the new Reversal Guard state
+        }
+    }
+
+    private void RecordExit(string key, PortfolioPosition p, ExitDecision d)
+    {
+        lock (historyLock)
+        {
+            if (!exitByRow.TryAdd(key, d)) return;
+            liveByRow.Remove(key);
+            historyEpoch++; // the portfolio grid redraws with the sell decision
+        }
+        SaveHistory();
+        var price = d.Price.ToString("0.00", CultureInfo.InvariantCulture);
+        AppLog.Info("Exit", $"{p.Symbol}: {d.Status} at {price} in the {d.Time} candle (bought {p.Price.ToString("0.00", CultureInfo.InvariantCulture)} at {p.BarTime:HH:mm}). {d.Reason}");
+        if (config.Notify)
+        {
+            var title = d.Status switch
+            {
+                ExitDecision.Target => $"SELL {p.Symbol}: target reached",
+                ExitDecision.Stop => $"SELL {p.Symbol}: stop reached",
+                ExitDecision.Breakeven => $"SELL {p.Symbol}: back at the buy price",
+                ExitDecision.Reversal => $"SELL {p.Symbol}: reversal",
+                _ => $"SELL {p.Symbol}: square-off",
+            };
+            notifier.Notify(10000 + (key.GetHashCode() & 0xFFFF), title, $"{d.Reason}. Sell near {price} (bought at {p.Price.ToString("0.00", CultureInfo.InvariantCulture)}).");
+        }
+        Update();
+    }
+
+    /// <summary>After the close-out pass: one summary of the day's exits.</summary>
+    private void FinishSummary()
+    {
+        string summary;
+        lock (historyLock) summary = ExitSummaryLocked() ?? "";
+        AppLog.Info("Exit", summary);
+        SetTrackStatus("Exit Monitor finished for the day.");
+        if (config.Notify) notifier.Notify(5, "VWAP Scanner - exits", summary);
     }
 }

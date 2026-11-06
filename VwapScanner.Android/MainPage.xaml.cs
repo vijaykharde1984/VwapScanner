@@ -16,7 +16,7 @@ public partial class MainPage : ContentPage
     private RunResult? shown;
 
     private readonly ResultTable signalsTable = new(SignalHeaders, [110, 110, 200, 90, 90, 100, 80, 120, 80, 90, 90, 90, 90, 90, 90, 90]);
-    private readonly ResultTable portfolioTable = new(PositionHeaders, [90, 110, 110, 200, 90, 90, 90, 90, 80, 100, 120, 130, 140, 160, 80, 90, 90, 90, 90, 90, 130]);
+    private readonly ResultTable portfolioTable = new(PositionHeaders, [90, 110, 110, 200, 90, 90, 90, 90, 80, 100, 120, 130, 140, 160, 80, 90, 90, 90, 90, 90, 130, 120, 70, 80, 260, 80, 70, 80]);
     private int historyEpoch = -1, signalRows, positionRows;
 
     public MainPage(ApiState state, AppConfig config, ScanCoordinator coordinator, IFileSaver saver, IReminderScheduler reminders, IServiceProvider services)
@@ -108,7 +108,7 @@ public partial class MainPage : ContentPage
         if (chunk.Reset) { signalsTable.Clear(); portfolioTable.Clear(); }
         historyEpoch = chunk.Epoch;
         if (chunk.Signals.Count > 0) signalsTable.Append(chunk.Signals.Select(x => SignalCells(x, coordinator.OhlcFor(x))));
-        if (chunk.Positions.Count > 0) portfolioTable.Append(chunk.Positions.Select(x => PositionCells(x.At, x.Position, coordinator.OhlcFor(x.Position))));
+        if (chunk.Positions.Count > 0) portfolioTable.Append(chunk.Positions.Select(x => PositionCells(x.At, x.Position, coordinator.OhlcFor(x.Position), coordinator.ExitFor(x.Position))));
         signalRows = chunk.SignalTotal;
         positionRows = chunk.PositionTotal;
         SignalsGridHeader.Text = $"Signals grid ({signalRows} row(s) today)";
@@ -125,6 +125,8 @@ public partial class MainPage : ContentPage
         var t = coordinator.PortfolioTotals();
         PortfolioTotalsBar.IsVisible = t.Rows > 0;
         if (t.Rows == 0) return;
+        TrackingTotalLabel.IsVisible = t.TrackingText is not null;
+        TrackingTotalLabel.Text = t.TrackingText is null ? "" : t.TrackingText + (t.TrackingStatus is null ? "" : "\n" + t.TrackingStatus);
         InvestmentTotalLabel.Text = $"Total investment (price x quantity): INR {t.Invested.ToString("N2", CultureInfo.InvariantCulture)}  ({t.Rows} row(s))";
         if (t.PricedRows == 0)
         {
@@ -190,7 +192,7 @@ public partial class MainPage : ContentPage
 
     private (string Name, string Csv, int Rows)? PortfolioFile(string stamp)
     {
-        var rows = coordinator.ExportPositions().Select(x => PositionCells(x.At, x.Position, coordinator.OhlcFor(x.Position))).ToList();
+        var rows = coordinator.ExportPositions().Select(x => PositionCells(x.At, x.Position, coordinator.OhlcFor(x.Position), coordinator.ExitFor(x.Position))).ToList();
         return rows.Count == 0 ? null : ($"vwap-portfolio-{stamp}.csv", ToCsv(PositionHeaders, rows), rows.Count);
     }
 

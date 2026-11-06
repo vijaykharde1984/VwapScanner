@@ -67,6 +67,20 @@ public sealed class AppConfig
     public bool ReminderVibrate => !bool.TryParse(Root["App:ReminderVibrate"], out var v) || v;
     /// <summary>Save the day's CSV files automatically when the market closes.</summary>
     public bool SaveCsvAtClose => !bool.TryParse(Root["App:SaveCsvAtClose"], out var c) || c;
+    /// <summary>The Exit Monitor: a separate loop that decides when each portfolio row should be sold.</summary>
+    public bool ExitMonitorEnabled => !bool.TryParse(Root["App:ExitMonitorEnabled"], out var t) || t;
+    public int ExitCheckSeconds => int.TryParse(Root["App:ExitCheckSeconds"], NumberStyles.Integer, CultureInfo.InvariantCulture, out var m) ? Math.Clamp(m, 15, 300) : 30;
+    /// <summary>Positions still held at this IST time are squared off (09:30 to 15:30, default 15:15).</summary>
+    public TimeSpan ExitCloseTime => TimeOnly.TryParseExact(Root["App:ExitCloseTime"], "HH:mm", CultureInfo.InvariantCulture, DateTimeStyles.None, out var c)
+        && c.ToTimeSpan() >= new TimeSpan(9, 30, 0) && c.ToTimeSpan() <= new TimeSpan(15, 30, 0) ? c.ToTimeSpan() : new TimeSpan(15, 15, 0);
+    /// <summary>The Reversal Guard: protects a position that rose toward the target and is now fading.</summary>
+    public bool GuardEnabled => !bool.TryParse(Root["App:GuardEnabled"], out var g) || g;
+    public decimal GuardArmPercent => Dec("App:GuardArmPercent", 50, 10, 100);
+    public decimal GuardGivebackPercent => Dec("App:GuardGivebackPercent", 40, 10, 100);
+    public int GuardFadeCandles => (int)Dec("App:GuardFadeCandles", 3, 2, 10);
+    public decimal GuardBreakevenBps => Dec("App:GuardBreakevenBps", 5, 0, 100);
+    private decimal Dec(string key, decimal fallback, decimal min, decimal max) =>
+        decimal.TryParse(Root[key], NumberStyles.Number, CultureInfo.InvariantCulture, out var v) ? Math.Clamp(v, min, max) : fallback;
     public bool Notify => !bool.TryParse(Root["App:Notify"], out var n) || n;
     /// <summary>True when a past day is being replayed, so the market-hours checks of auto-refresh do not apply.</summary>
     public bool Replaying => !string.IsNullOrWhiteSpace(Root["Scan:Date"]);
