@@ -81,6 +81,9 @@ public sealed class AppConfig
     public decimal GuardBreakevenBps => Dec("App:GuardBreakevenBps", 5, 0, 100);
     private decimal Dec(string key, decimal fallback, decimal min, decimal max) =>
         decimal.TryParse(Root[key], NumberStyles.Number, CultureInfo.InvariantCulture, out var v) ? Math.Clamp(v, min, max) : fallback;
+    /// <summary>Stop Reprieve: when the stop is touched but the price looks set to recover, wait this long before selling.</summary>
+    public bool StopReprieveEnabled => !bool.TryParse(Root["App:StopReprieveEnabled"], out var e) || e;
+    public int StopReprieveMinutes => (int)Dec("App:StopReprieveMinutes", 15, 1, 60);
     public bool Notify => !bool.TryParse(Root["App:Notify"], out var n) || n;
     /// <summary>True when a past day is being replayed, so the market-hours checks of auto-refresh do not apply.</summary>
     public bool Replaying => !string.IsNullOrWhiteSpace(Root["Scan:Date"]);

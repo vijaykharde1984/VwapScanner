@@ -189,7 +189,14 @@ public sealed class ScanCoordinator(ApiState state, AppConfig config, INotifier 
                         exitByRow[k] = e with { NetGain = ExitEvaluator.NetGain(pos, e.Price, Costs()) };
                 historyEpoch++;
             }
-            catch (Exception e) when (e is IOException or JsonException or UnauthorizedAccessException) { /* start with empty grids */ }
+            catch (Exception e)
+            {
+                // A saved file that cannot be read (older version, damaged) must never stop the app: keep it aside as history.json.bad and start with empty grids.
+                AppLog.Error("History", e, "Reading history.json");
+                signalHistory.Clear(); positionHistory.Clear(); seen.Clear(); positionSeen.Clear(); ohlcByRow.Clear(); exitByRow.Clear(); liveByRow.Clear();
+                try { File.Move(HistoryPath, HistoryPath + ".bad", overwrite: true); } catch (Exception) { }
+                historyEpoch++;
+            }
         }
     }
 
@@ -585,7 +592,8 @@ public sealed class ScanCoordinator(ApiState state, AppConfig config, INotifier 
     public string TrackStatus { get; private set; } = "";
 
     private ExitRules Rules() => new(config.GuardEnabled, config.GuardArmPercent, config.GuardGivebackPercent, config.GuardFadeCandles,
-        config.GuardBreakevenBps, config.AutoRefreshMinutes, config.ExitCloseTime);
+        config.GuardBreakevenBps, config.AutoRefreshMinutes, config.ExitCloseTime,
+        config.StopReprieveEnabled, config.StopReprieveMinutes);
 
     // ---- capital balance ----
     // The optimizer sizes every scan's positions against the whole Portfolio:Capital, so without a balance each scan would spend the full capital again.
@@ -642,6 +650,12 @@ public sealed class ScanCoordinator(ApiState state, AppConfig config, INotifier 
 
     /// <summary>Starts the Exit Monitor when there is something to watch and none is running. Safe to call at any time; it returns at once.</summary>
     public void EnsureTracker(bool afterClose = false)
+    {
+        try { StartTrackerIfNeeded(afterClose); }
+        catch (Exception e) { AppLog.Error("Exit", e, "Starting the Exit Monitor"); } // never let it take the caller (a scan, the start-up) down
+    }
+
+    private void StartTrackerIfNeeded(bool afterClose)
     {
         if (!config.ExitMonitorEnabled || config.Replaying || !state.Connected) return;
         var now = DateTimeOffset.UtcNow.ToOffset(Ist);
@@ -737,7 +751,7 @@ public sealed class ScanCoordinator(ApiState state, AppConfig config, INotifier 
             foreach (var (key, p) in group)
             {
                 var d = ExitEvaluator.Evaluate(p, candles, now, rules, final);
-                if (d.IsExit) RecordExit(key, p, d); else SetLive(key, d);
+                if (d.IsExit) RecordExit(key, p, d); else SetLive(key, p, d);
             }
         }
         int left, armed;
@@ -749,13 +763,20 @@ public sealed class ScanCoordinator(ApiState state, AppConfig config, INotifier 
         SetTrackStatus($"Exit Monitor: {left} row(s) held ({armed} armed), last check {DateTime.Now:HH:mm:ss} (every {config.ExitCheckSeconds} s).");
     }
 
-    private void SetLive(string key, ExitDecision d)
+    private void SetLive(string key, PortfolioPosition p, ExitDecision d)
     {
+        var entering = false;
         lock (historyLock)
         {
             var before = liveByRow.TryGetValue(key, out var old) ? old.Guard : (config.GuardEnabled ? ExitDecision.Watch : "");
             liveByRow[key] = d;
             if (before != d.Guard) historyEpoch++; // the grid redraws with the new Reversal Guard state
+            entering = before != ExitDecision.Reprieve && d.Guard == ExitDecision.Reprieve;
+        }
+        if (entering)
+        {
+            AppLog.Info("Exit", $"{p.Symbol}: stop reprieve started. {d.Reason}");
+            if (config.Notify) notifier.Notify(20000 + (key.GetHashCode() & 0xFFFF), $"{p.Symbol}: stop touched - waiting", d.Reason + ".");
         }
     }
 

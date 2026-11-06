@@ -65,7 +65,12 @@ public partial class MainPage : ContentPage
         base.OnDisappearing();
     }
 
-    private void OnCoordinatorChanged() => MainThread.BeginInvokeOnMainThread(Refresh);
+    // This runs on the UI thread outside any handler guard, so an exception here would close the whole app: it is logged instead.
+    private void OnCoordinatorChanged() => MainThread.BeginInvokeOnMainThread(() =>
+    {
+        try { Refresh(); }
+        catch (Exception e) { AppLog.Error("Ui", e, "Refresh"); }
+    });
 
     /// <summary>Redraws everything from the connection state and the coordinator (which keeps scanning while this page is not shown).</summary>
     private void Refresh()

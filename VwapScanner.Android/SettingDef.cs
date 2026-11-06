@@ -60,9 +60,13 @@ public sealed record SettingDef(string Key, string Label, SettingKind Kind, stri
         new("App:GuardGivebackPercent", "Sell when this % of the peak gain is given back", SettingKind.Decimal, "Reversal Guard",
             "Example: bought 400, peak 408, 40% of the 8 gain = 3.2, so a close at 404.8 or lower sells (EXIT_REVERSAL).", 10, 100),
         new("App:GuardFadeCandles", "Lower closes in a row (below VWAP)", SettingKind.Integer, "Reversal Guard",
-            "Sell when the price closes lower this many times in a row while below the day's VWAP.", 2, 10),
+            "Sell when the price closes lower this many times in a row while below the day's VWAP. Stop Reprieve uses it too: a wait is cancelled after this many lower closes in a row.", 2, 10),
         new("App:GuardBreakevenBps", "Breakeven buffer (bps)", SettingKind.Decimal, "Reversal Guard",
             "Added to the buy price for the breakeven level, to cover brokerage and slippage. 5 bps = 0.05%: 400 becomes 400.20.", 0, 100),
+        new("App:StopReprieveEnabled", "Stop Reprieve", SettingKind.Bool, "Stop Reprieve",
+            "When a dip touches the stop but the price is already back above it and the VWAP leaves room to progress (at least one buy-to-stop distance), wait instead of selling. The stop stays the only stop loss: while waiting, a completed 1-minute close at or below it sells. Off = sell at the stop."),
+        new("App:StopReprieveMinutes", "Wait up to (minutes)", SettingKind.Integer, "Stop Reprieve",
+            "How long to wait after the dip. The wait is cancelled early (sold) after the number of lower closes in a row set under Reversal Guard, or when by the half-way point the price is not above where it was when the wait began. Only one reprieve per position.", 1, 60),
     ];
 
     /// <summary>Checks and normalizes what the user typed; on failure <paramref name="error"/> says what is expected.</summary>

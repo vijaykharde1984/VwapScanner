@@ -10,7 +10,7 @@ namespace VwapScanner;
 public sealed record ExitDecision(string Status, string Time, decimal Price, string Reason, decimal Peak = 0, string PeakTime = "", string Guard = "", decimal? NetGain = null)
 {
     public const string Hold = "HOLD", Target = "EXIT_TARGET", Stop = "EXIT_STOP", Reversal = "EXIT_REVERSAL", Breakeven = "EXIT_BREAKEVEN", Close = "EXIT_CLOSE";
-    public const string Watch = "WATCH", Armed = "ARMED", Fading = "FADING";
+    public const string Watch = "WATCH", Armed = "ARMED", Fading = "FADING", Reprieve = "REPRIEVE";
     public static readonly ExitDecision Holding = new(Hold, "", 0, "");
     public bool IsExit => Status != Hold;
 }
