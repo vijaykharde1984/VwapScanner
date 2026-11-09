@@ -155,7 +155,7 @@ The Exit Monitor treats each portfolio row as bought at the **close of its signa
 
 Reversal Guard (on by default): once the position has covered 50% of the way from entry to target, the stop rises to the buy price plus a small cost buffer. After that, giving back 40% of the peak gain, several lower closes below VWAP, or a projected fade ends the trade.
 
-Stop Reprieve (off by default): when a candle dips to the stop but the price is already back above it, and VWAP is at least one buy-to-stop distance above the price, the stop exit can be put off for a set number of minutes, judged on completed 1-minute closes. This is meaningful for `ScalpVwap` because the stock is bought below VWAP.
+Stop Reprieve (on by default, 15 minutes): when a candle dips to the stop but the price is already back above it, and VWAP is at least one buy-to-stop distance above the price, the stop exit can be put off for a set number of minutes, judged on completed 1-minute closes. This is meaningful for `ScalpVwap` because the stock is bought below VWAP.
 
 **The fixed target and VWAP are different things.** The target is calculated from the entry and ATR. VWAP is shown as a reference and used by Stop Reprieve and the Reversal Guard, but reaching VWAP does **not** by itself close the position in this app. If real trading fills differ from the signal close, results will differ from the monitor's replay.
 

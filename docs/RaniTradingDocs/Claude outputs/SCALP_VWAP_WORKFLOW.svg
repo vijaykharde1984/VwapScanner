@@ -1,0 +1,215 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1420 1611" width="1420" height="1611" font-family="Arial, Helvetica, sans-serif" role="img" aria-label="ScalpVwap: end-to-end workflow and default settings">
+<title>ScalpVwap: end-to-end workflow and default settings</title>
+<defs><marker id="ar" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="8" markerHeight="8" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#444"/></marker></defs>
+<rect width="1420" height="1611" fill="#ffffff"/>
+<text x="30" y="38" font-size="24" font-weight="bold" fill="#111">ScalpVwap: end-to-end workflow and default settings</text>
+<text x="30" y="62" font-size="13" fill="#444">Long-only mean reversion below VWAP. VwapScanner.Android (read-only: finds signals, sizes a simulated portfolio, monitors exits).</text>
+<rect x="30" y="90" width="800" height="149" rx="10" fill="#EEF3FB" stroke="#2F5D9E" stroke-width="2"/>
+<text x="46" y="115" font-size="16" font-weight="bold" fill="#111">1. Trigger</text>
+<text x="46" y="140" font-size="13" fill="#222">Scan now (button)  or  Auto-refresh every N minutes until 15:30 IST (starts automatically when the app opens).</text>
+<text x="46" y="159" font-size="13" fill="#222">Optional replay: a past date and "as of" time (empty = today, now). Settings are re-read at every scan.</text>
+<text x="46" y="178" font-size="13" fill="#222">The strategy chosen in Settings &gt; Scan &gt; Strategy is applied to the next scan.</text>
+<rect x="860" y="90" width="530" height="149" rx="10" fill="#FAFAFA" stroke="#2F5D9E" stroke-width="1.5" stroke-dasharray="5 3"/>
+<text x="874" y="113" font-size="14" font-weight="bold" fill="#111">Settings: Scan / App</text>
+<line x1="870" y1="120" x2="1380" y2="120" stroke="#2F5D9E"/>
+<rect x="866" y="125" width="518" height="21" fill="#EFEFEF"/>
+<text x="874" y="140" font-size="13" fill="#222">Strategy (Scan:StrategyName)</text>
+<text x="1376" y="140" font-size="13" font-weight="bold" fill="#0b3d91" text-anchor="end">ScalpVwap</text>
+<text x="874" y="161" font-size="13" fill="#222">Auto-refresh every (min)</text>
+<text x="1376" y="161" font-size="13" font-weight="bold" fill="#0b3d91" text-anchor="end">5</text>
+<rect x="866" y="167" width="518" height="21" fill="#EFEFEF"/>
+<text x="874" y="182" font-size="13" fill="#222">Start auto-refresh automatically</text>
+<text x="1376" y="182" font-size="13" font-weight="bold" fill="#0b3d91" text-anchor="end">On</text>
+<text x="874" y="203" font-size="13" fill="#222">Replay date / time</text>
+<text x="1376" y="203" font-size="13" font-weight="bold" fill="#0b3d91" text-anchor="end">empty</text>
+<rect x="866" y="209" width="518" height="21" fill="#EFEFEF"/>
+<text x="874" y="224" font-size="13" fill="#222">Daily reminder time</text>
+<text x="1376" y="224" font-size="13" font-weight="bold" fill="#0b3d91" text-anchor="end">09:10</text>
+<line x1="830" y1="164" x2="860" y2="164" stroke="#2F5D9E" stroke-dasharray="3 3"/>
+<line x1="430" y1="239" x2="430" y2="265" stroke="#444" stroke-width="2" marker-end="url(#ar)"/>
+<rect x="30" y="269" width="800" height="107" rx="10" fill="#EEF3FB" stroke="#2F5D9E" stroke-width="2"/>
+<text x="46" y="294" font-size="16" font-weight="bold" fill="#111">2. Read completed 1-minute candles (Kite Connect)</text>
+<text x="46" y="319" font-size="13" fill="#222">Historical 1-minute candles per stock, cached per instrument and day; only missing minutes are fetched.</text>
+<text x="46" y="338" font-size="13" fill="#222">Only COMPLETED candles are used (candle end time &lt;= "as of" time). Polling, not a live tick feed.</text>
+<text x="46" y="357" font-size="13" fill="#222">The scan checks the latest candle and the last N candles (Lookback) of every stock.</text>
+<rect x="860" y="269" width="530" height="107" rx="10" fill="#FAFAFA" stroke="#2F5D9E" stroke-width="1.5" stroke-dasharray="5 3"/>
+<text x="874" y="292" font-size="14" font-weight="bold" fill="#111">Settings: Scan</text>
+<line x1="870" y1="299" x2="1380" y2="299" stroke="#2F5D9E"/>
+<rect x="866" y="304" width="518" height="21" fill="#EFEFEF"/>
+<text x="874" y="319" font-size="13" fill="#222">Stock list (universe)</text>
+<text x="1376" y="319" font-size="13" font-weight="bold" fill="#0b3d91" text-anchor="end">nifty100</text>
+<text x="874" y="340" font-size="13" fill="#222">Lookback (candles)</text>
+<text x="1376" y="340" font-size="13" font-weight="bold" fill="#0b3d91" text-anchor="end">1</text>
+<rect x="866" y="346" width="518" height="21" fill="#EFEFEF"/>
+<text x="874" y="361" font-size="13" fill="#222">Candle interval</text>
+<text x="1376" y="361" font-size="13" font-weight="bold" fill="#0b3d91" text-anchor="end">1 minute (fixed)</text>
+<line x1="830" y1="322" x2="860" y2="322" stroke="#2F5D9E" stroke-dasharray="3 3"/>
+<line x1="430" y1="376" x2="430" y2="402" stroke="#444" stroke-width="2" marker-end="url(#ar)"/>
+<rect x="30" y="406" width="800" height="105" rx="10" fill="#EEF3FB" stroke="#2F5D9E" stroke-width="2"/>
+<text x="46" y="431" font-size="16" font-weight="bold" fill="#111">3. NIFTY 50 benchmark gate (shared by both strategies)</text>
+<text x="46" y="456" font-size="13" fill="#222">A separate VWAP state is built for NIFTY 50 from the same candles.</text>
+<text x="46" y="475" font-size="13" fill="#222">A candle time is blocked when the benchmark is in a downtrend: EMA5 &lt; EMA13 AND 3-candle momentum &lt; 0.</text>
+<text x="46" y="494" font-size="13" fill="#222">Stock signals at blocked times are skipped (shown as "NIFTY downtrend" in the diagnostics text).</text>
+<rect x="860" y="406" width="530" height="105" rx="10" fill="#FAFAFA" stroke="#2F5D9E" stroke-width="1.5" stroke-dasharray="5 3"/>
+<text x="874" y="429" font-size="14" font-weight="bold" fill="#111">Settings: Scan</text>
+<line x1="870" y1="436" x2="1380" y2="436" stroke="#2F5D9E"/>
+<rect x="866" y="441" width="518" height="21" fill="#EFEFEF"/>
+<text x="874" y="456" font-size="13" fill="#222">NIFTY 50 downtrend filter</text>
+<text x="1376" y="456" font-size="13" font-weight="bold" fill="#0b3d91" text-anchor="end">On</text>
+<line x1="830" y1="458" x2="860" y2="458" stroke="#2F5D9E" stroke-dasharray="3 3"/>
+<line x1="430" y1="511" x2="430" y2="537" stroke="#444" stroke-width="2" marker-end="url(#ar)"/>
+<rect x="30" y="541" width="800" height="276" rx="10" fill="#EAF6EE" stroke="#2E7D4F" stroke-width="2"/>
+<text x="46" y="566" font-size="16" font-weight="bold" fill="#111">4. ScalpVwap: indicators and signal rules (VwapState.Candidate)</text>
+<text x="46" y="591" font-size="13" fill="#222">Per stock, per completed candle. Fixed: VWAP (HLC3 x volume), ATR 10, EMA 5 / 13, momentum 3, relative volume vs prior 20.</text>
+<text x="46" y="610" font-size="13" fill="#222">Ready after 21 candles (first decision ~09:36). Long-only mean reversion: buy a turn-up while stretched below VWAP.</text>
+<text x="46" y="629" font-size="13" fill="#222">ALL must pass on the signal candle:</text>
+<text x="46" y="648" font-size="13" fill="#222">1  stretch = (VWAP - close) / ATR  &gt;=  Min stretch</text>
+<text x="46" y="667" font-size="13" fill="#222">2  turn-up: close &gt; previous close, close in upper half of the candle range</text>
+<text x="46" y="686" font-size="13" fill="#222">3  relative volume &gt;= minimum        4  close x volume &gt;= minimum turnover</text>
+<text x="46" y="705" font-size="13" fill="#222">5  target distance = stop x ATR x reward:risk / close x 10,000  &gt;=  min bps</text>
+<text x="46" y="724" font-size="13" fill="#222">6  decision time (candle end) inside the entry window</text>
+<text x="46" y="743" font-size="13" fill="#222">No stock-trend test and no cool-down: several consecutive candles can each produce a signal.</text>
+<text x="46" y="762" font-size="13" fill="#222"></text>
+<text x="46" y="781" font-size="13" fill="#222">Signal levels:   Entry = close      Stop = close - 1.0 x ATR      Target = close + 1.5 x (1.0 x ATR)</text>
+<text x="46" y="800" font-size="13" fill="#222">Score = stretch + min(relative volume, 3) / 10   -&gt;  ranked newest first, then by score</text>
+<rect x="860" y="541" width="530" height="276" rx="10" fill="#FAFAFA" stroke="#2E7D4F" stroke-width="1.5" stroke-dasharray="5 3"/>
+<text x="874" y="564" font-size="14" font-weight="bold" fill="#111">Settings: ScalpVwap strategy (Scan:Strategy:*)</text>
+<line x1="870" y1="571" x2="1380" y2="571" stroke="#2E7D4F"/>
+<rect x="866" y="576" width="518" height="21" fill="#EFEFEF"/>
+<text x="874" y="591" font-size="13" fill="#222">Min stretch below VWAP (ATR)</text>
+<text x="1376" y="591" font-size="13" font-weight="bold" fill="#0b3d91" text-anchor="end">1.0</text>
+<text x="874" y="612" font-size="13" fill="#222">Min relative volume</text>
+<text x="1376" y="612" font-size="13" font-weight="bold" fill="#0b3d91" text-anchor="end">1.0</text>
+<rect x="866" y="618" width="518" height="21" fill="#EFEFEF"/>
+<text x="874" y="633" font-size="13" fill="#222">Min bar turnover (INR)</text>
+<text x="1376" y="633" font-size="13" font-weight="bold" fill="#0b3d91" text-anchor="end">500000</text>
+<text x="874" y="654" font-size="13" fill="#222">Min target (bps)</text>
+<text x="1376" y="654" font-size="13" font-weight="bold" fill="#0b3d91" text-anchor="end">15</text>
+<rect x="866" y="660" width="518" height="21" fill="#EFEFEF"/>
+<text x="874" y="675" font-size="13" fill="#222">Stop distance (ATR)</text>
+<text x="1376" y="675" font-size="13" font-weight="bold" fill="#0b3d91" text-anchor="end">1.0</text>
+<text x="874" y="696" font-size="13" fill="#222">Reward : risk</text>
+<text x="1376" y="696" font-size="13" font-weight="bold" fill="#0b3d91" text-anchor="end">1.5</text>
+<rect x="866" y="702" width="518" height="21" fill="#EFEFEF"/>
+<text x="874" y="717" font-size="13" fill="#222">First entry time</text>
+<text x="1376" y="717" font-size="13" font-weight="bold" fill="#0b3d91" text-anchor="end">09:30</text>
+<text x="874" y="738" font-size="13" fill="#222">Last entry time</text>
+<text x="1376" y="738" font-size="13" font-weight="bold" fill="#0b3d91" text-anchor="end">15:00</text>
+<line x1="830" y1="679" x2="860" y2="679" stroke="#2E7D4F" stroke-dasharray="3 3"/>
+<line x1="430" y1="817" x2="430" y2="843" stroke="#444" stroke-width="2" marker-end="url(#ar)"/>
+<rect x="30" y="847" width="800" height="233" rx="10" fill="#F3EEFA" stroke="#6B4FA0" stroke-width="2"/>
+<text x="46" y="872" font-size="16" font-weight="bold" fill="#111">5. Portfolio optimizer (simulation only: no orders are placed)</text>
+<text x="46" y="897" font-size="13" fill="#222">Best MaxPositions signals share the stop-risk budget in proportion to score (water-filling).</text>
+<text x="46" y="916" font-size="13" fill="#222">Quantity = whole shares sized from the loss at the stop, incl. both legs' Zerodha fees + slippage.</text>
+<text x="46" y="935" font-size="13" fill="#222">Capped by: risk per trade, total stop risk, allocation per stock, bar-volume participation, cash.</text>
+<text x="46" y="954" font-size="13" fill="#222">A row whose target leaves no positive net gain after costs is skipped.</text>
+<text x="46" y="973" font-size="13" fill="#222">Sale proceeds from the Exit Monitor are added back to the next scan's cash.</text>
+<rect x="860" y="847" width="530" height="233" rx="10" fill="#FAFAFA" stroke="#6B4FA0" stroke-width="1.5" stroke-dasharray="5 3"/>
+<text x="874" y="870" font-size="14" font-weight="bold" fill="#111">Settings: Portfolio</text>
+<line x1="870" y1="877" x2="1380" y2="877" stroke="#6B4FA0"/>
+<rect x="866" y="882" width="518" height="21" fill="#EFEFEF"/>
+<text x="874" y="897" font-size="13" fill="#222">Capital (INR)</text>
+<text x="1376" y="897" font-size="13" font-weight="bold" fill="#0b3d91" text-anchor="end">100000</text>
+<text x="874" y="918" font-size="13" fill="#222">Risk per trade (%)</text>
+<text x="1376" y="918" font-size="13" font-weight="bold" fill="#0b3d91" text-anchor="end">0.15</text>
+<rect x="866" y="924" width="518" height="21" fill="#EFEFEF"/>
+<text x="874" y="939" font-size="13" fill="#222">Max portfolio risk at stops (%)</text>
+<text x="1376" y="939" font-size="13" font-weight="bold" fill="#0b3d91" text-anchor="end">0.45</text>
+<text x="874" y="960" font-size="13" fill="#222">Max allocation per stock (%)</text>
+<text x="1376" y="960" font-size="13" font-weight="bold" fill="#0b3d91" text-anchor="end">25</text>
+<rect x="866" y="966" width="518" height="21" fill="#EFEFEF"/>
+<text x="874" y="981" font-size="13" fill="#222">Max positions</text>
+<text x="1376" y="981" font-size="13" font-weight="bold" fill="#0b3d91" text-anchor="end">3</text>
+<text x="874" y="1002" font-size="13" fill="#222">Max share of bar volume (%)</text>
+<text x="1376" y="1002" font-size="13" font-weight="bold" fill="#0b3d91" text-anchor="end">1</text>
+<rect x="866" y="1008" width="518" height="21" fill="#EFEFEF"/>
+<text x="874" y="1023" font-size="13" fill="#222">Slippage per side (bps)</text>
+<text x="1376" y="1023" font-size="13" font-weight="bold" fill="#0b3d91" text-anchor="end">5</text>
+<text x="874" y="1044" font-size="13" fill="#222">Brokerage % (cap INR / order)</text>
+<text x="1376" y="1044" font-size="13" font-weight="bold" fill="#0b3d91" text-anchor="end">0.03 (20)</text>
+<rect x="866" y="1050" width="518" height="21" fill="#EFEFEF"/>
+<text x="874" y="1065" font-size="13" fill="#222">Sell STT %</text>
+<text x="1376" y="1065" font-size="13" font-weight="bold" fill="#0b3d91" text-anchor="end">0.025</text>
+<line x1="830" y1="963" x2="860" y2="963" stroke="#6B4FA0" stroke-dasharray="3 3"/>
+<line x1="430" y1="1080" x2="430" y2="1106" stroke="#444" stroke-width="2" marker-end="url(#ar)"/>
+<rect x="30" y="1110" width="800" height="296" rx="10" fill="#FFF4E5" stroke="#B8741A" stroke-width="2"/>
+<text x="46" y="1135" font-size="16" font-weight="bold" fill="#111">6. Exit Monitor (every 15 s; also runs after each refresh)</text>
+<text x="46" y="1160" font-size="13" fill="#222">Each portfolio row is treated as bought at the CLOSE of its signal candle; the next candle is the first that counts.</text>
+<text x="46" y="1179" font-size="13" fill="#222">The day's 1-minute candles are replayed in order, so a restart gives the same answer. First rule hit ends the trade:</text>
+<text x="46" y="1198" font-size="13" fill="#222"></text>
+<text x="46" y="1217" font-size="13" fill="#222"></text>
+<text x="46" y="1236" font-size="13" fill="#222"></text>
+<text x="46" y="1255" font-size="13" fill="#222"></text>
+<text x="46" y="1274" font-size="13" fill="#222"></text>
+<text x="46" y="1293" font-size="13" fill="#222">Reversal Guard: armed when the high covers 50% of the way to target; then stop -&gt; buy + 5 bps (EXIT_BREAKEVEN).</text>
+<text x="46" y="1312" font-size="13" fill="#222">Once armed, EXIT_REVERSAL on: 40% of peak gain given back, 3 lower closes below VWAP, or trend projected at/below buy.</text>
+<text x="46" y="1331" font-size="13" fill="#222">Stop Reprieve (On): a dip to the stop with price back above it AND VWAP &gt;= 1 stop-distance above price waits up to 15 min,</text>
+<text x="46" y="1350" font-size="13" fill="#222">judged on completed closes (needs price below VWAP: normal for ScalpVwap, almost never true for VwapPullback).</text>
+<text x="46" y="1369" font-size="13" fill="#222">Sold rows get a notification (if on) and free their cash for the next scan.</text>
+<rect x="46" y="1190" width="146" height="62" rx="8" fill="#DFF2E3" stroke="#2E7D4F" stroke-width="1.5"/>
+<text x="119.0" y="1214" font-size="12.5" font-weight="bold" text-anchor="middle" fill="#111">EXIT_TARGET</text>
+<text x="119.0" y="1232" font-size="11.5" text-anchor="middle" fill="#333">high ≥ target</text>
+<rect x="209" y="1190" width="146" height="62" rx="8" fill="#FBE3E3" stroke="#B33A3A" stroke-width="1.5"/>
+<text x="282.0" y="1214" font-size="12.5" font-weight="bold" text-anchor="middle" fill="#111">EXIT_STOP</text>
+<text x="282.0" y="1232" font-size="11.5" text-anchor="middle" fill="#333">low ≤ stop (stop wins</text>
+<text x="282.0" y="1246" font-size="11.5" text-anchor="middle" fill="#333">ties)</text>
+<rect x="372" y="1190" width="146" height="62" rx="8" fill="#FFF0C9" stroke="#A67C00" stroke-width="1.5"/>
+<text x="445.0" y="1214" font-size="12.5" font-weight="bold" text-anchor="middle" fill="#111">EXIT_BREAKEVEN</text>
+<text x="445.0" y="1232" font-size="11.5" text-anchor="middle" fill="#333">guard armed, stop at</text>
+<text x="445.0" y="1246" font-size="11.5" text-anchor="middle" fill="#333">buy+5 bps</text>
+<rect x="535" y="1190" width="146" height="62" rx="8" fill="#FFF0C9" stroke="#A67C00" stroke-width="1.5"/>
+<text x="608.0" y="1214" font-size="12.5" font-weight="bold" text-anchor="middle" fill="#111">EXIT_REVERSAL</text>
+<text x="608.0" y="1232" font-size="11.5" text-anchor="middle" fill="#333">guard armed, fade /</text>
+<text x="608.0" y="1246" font-size="11.5" text-anchor="middle" fill="#333">giveback</text>
+<rect x="698" y="1190" width="146" height="62" rx="8" fill="#E8E8E8" stroke="#666" stroke-width="1.5"/>
+<text x="771.0" y="1214" font-size="12.5" font-weight="bold" text-anchor="middle" fill="#111">EXIT_CLOSE</text>
+<text x="771.0" y="1232" font-size="11.5" text-anchor="middle" fill="#333">held at 15:15: sell at</text>
+<text x="771.0" y="1246" font-size="11.5" text-anchor="middle" fill="#333">close</text>
+<rect x="860" y="1110" width="530" height="296" rx="10" fill="#FAFAFA" stroke="#B8741A" stroke-width="1.5" stroke-dasharray="5 3"/>
+<text x="874" y="1133" font-size="14" font-weight="bold" fill="#111">Settings: Exit Monitor</text>
+<line x1="870" y1="1140" x2="1380" y2="1140" stroke="#B8741A"/>
+<rect x="866" y="1145" width="518" height="21" fill="#EFEFEF"/>
+<text x="874" y="1160" font-size="13" fill="#222">Exit Monitor enabled</text>
+<text x="1376" y="1160" font-size="13" font-weight="bold" fill="#0b3d91" text-anchor="end">On</text>
+<text x="874" y="1181" font-size="13" fill="#222">Check every (seconds)</text>
+<text x="1376" y="1181" font-size="13" font-weight="bold" fill="#0b3d91" text-anchor="end">15</text>
+<rect x="866" y="1187" width="518" height="21" fill="#EFEFEF"/>
+<text x="874" y="1202" font-size="13" fill="#222">Close-out time (IST)</text>
+<text x="1376" y="1202" font-size="13" font-weight="bold" fill="#0b3d91" text-anchor="end">15:15</text>
+<text x="874" y="1223" font-size="13" fill="#222">Reversal Guard</text>
+<text x="1376" y="1223" font-size="13" font-weight="bold" fill="#0b3d91" text-anchor="end">On</text>
+<rect x="866" y="1229" width="518" height="21" fill="#EFEFEF"/>
+<text x="874" y="1244" font-size="13" fill="#222">Arm after (% of way to target)</text>
+<text x="1376" y="1244" font-size="13" font-weight="bold" fill="#0b3d91" text-anchor="end">50</text>
+<text x="874" y="1265" font-size="13" fill="#222">Sell when % of peak gain given back</text>
+<text x="1376" y="1265" font-size="13" font-weight="bold" fill="#0b3d91" text-anchor="end">40</text>
+<rect x="866" y="1271" width="518" height="21" fill="#EFEFEF"/>
+<text x="874" y="1286" font-size="13" fill="#222">Lower closes in a row (below VWAP)</text>
+<text x="1376" y="1286" font-size="13" font-weight="bold" fill="#0b3d91" text-anchor="end">3</text>
+<text x="874" y="1307" font-size="13" fill="#222">Breakeven buffer (bps)</text>
+<text x="1376" y="1307" font-size="13" font-weight="bold" fill="#0b3d91" text-anchor="end">5</text>
+<rect x="866" y="1313" width="518" height="21" fill="#EFEFEF"/>
+<text x="874" y="1328" font-size="13" fill="#222">Trend projection (minutes)</text>
+<text x="1376" y="1328" font-size="13" font-weight="bold" fill="#0b3d91" text-anchor="end">= refresh min (5)</text>
+<text x="874" y="1349" font-size="13" fill="#222">Stop Reprieve</text>
+<text x="1376" y="1349" font-size="13" font-weight="bold" fill="#0b3d91" text-anchor="end">On</text>
+<rect x="866" y="1355" width="518" height="21" fill="#EFEFEF"/>
+<text x="874" y="1370" font-size="13" fill="#222">Wait up to (minutes)</text>
+<text x="1376" y="1370" font-size="13" font-weight="bold" fill="#0b3d91" text-anchor="end">15</text>
+<text x="874" y="1391" font-size="13" fill="#222">Notifications</text>
+<text x="1376" y="1391" font-size="13" font-weight="bold" fill="#0b3d91" text-anchor="end">On</text>
+<line x1="830" y1="1258" x2="860" y2="1258" stroke="#B8741A" stroke-dasharray="3 3"/>
+<line x1="430" y1="1406" x2="430" y2="1432" stroke="#444" stroke-width="2" marker-end="url(#ar)"/>
+<rect x="30" y="1436" width="800" height="105" rx="10" fill="#F2F2F2" stroke="#666" stroke-width="2"/>
+<text x="46" y="1461" font-size="16" font-weight="bold" fill="#111">7. Results</text>
+<text x="46" y="1486" font-size="13" fill="#222">Signals list + Signals grid, Portfolio list + Portfolio grid with per-row exit status, totals (invested, P&amp;L, tracking).</text>
+<text x="46" y="1505" font-size="13" fill="#222">Summary line names the strategy; diagnostics text explains how many candles passed each test.</text>
+<text x="46" y="1524" font-size="13" fill="#222">CSV files saved at the market close (Share CSV / Export CSV any time).  The app is READ-ONLY: it never places orders.</text>
+<rect x="860" y="1436" width="530" height="105" rx="10" fill="#FAFAFA" stroke="#666" stroke-width="1.5" stroke-dasharray="5 3"/>
+<text x="874" y="1459" font-size="14" font-weight="bold" fill="#111">Settings: App</text>
+<line x1="870" y1="1466" x2="1380" y2="1466" stroke="#666"/>
+<rect x="866" y="1471" width="518" height="21" fill="#EFEFEF"/>
+<text x="874" y="1486" font-size="13" fill="#222">Save CSV files at market close</text>
+<text x="1376" y="1486" font-size="13" font-weight="bold" fill="#0b3d91" text-anchor="end">On</text>
+<line x1="830" y1="1488" x2="860" y2="1488" stroke="#666" stroke-dasharray="3 3"/>
+<text x="30" y="1581" font-size="12" fill="#555">Blue = scan inputs   Green = strategy rules   Purple = portfolio   Orange = Exit Monitor   Dashed boxes = settings with default values (appsettings.json).</text><text x="30" y="1599" font-size="12" fill="#555">Defaults can be changed in Settings and are stored on the phone. Rules describe behavior only; they do not establish that the strategy is profitable.</text></svg>
