@@ -30,7 +30,7 @@ public sealed class ScanSettings
     public VwapOptions Strategy { get; set; } = new();
 
     /// <summary>Which strategy runs: ScalpVwap (thresholds in <see cref="Strategy"/>) or VwapPullback (thresholds in <see cref="Pullback"/>). See StrategyCatalog.</summary>
-    public string StrategyName { get; set; } = StrategyCatalog.ScalpVwap;
+    public string StrategyName { get; set; } = StrategyCatalog.VwapPullback;
 
     public PullbackOptions Pullback { get; set; } = new();
 

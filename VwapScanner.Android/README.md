@@ -51,8 +51,8 @@ The stop column stays the one and only stop loss. When a dip touches the stop (a
 ## Strategy switch
 Settings > Scan > Strategy chooses which strategy the scan runs (the Settings page lists the options; the change applies to the next scan):
 
-- **ScalpVwap** (default): the original mean-reversion VWAP scalp (`VwapStrategy.cs`, untouched).
-- **VwapPullback**: long-only VWAP trend pullback (`PullbackStrategy.cs`). It needs an established uptrend (most closes above VWAP, rising VWAP, EMA9 > EMA21, higher highs and lows), a pullback that touches VWAP, then a green confirmation candle. The stop sits below the pullback low or VWAP, and the target is 2R by default. Its options are under "Pullback strategy" in Settings (`Scan:Pullback:*` in `appsettings.json`).
+- **ScalpVwap**: the original mean-reversion VWAP scalp (`VwapStrategy.cs`, untouched).
+- **VwapPullback** (default): long-only VWAP trend pullback (`PullbackStrategy.cs`). It needs an established uptrend (most closes above VWAP, rising VWAP, EMA9 > EMA20, higher highs and lows), a pullback that touches VWAP, then a green confirmation candle. The stop sits below the pullback low or VWAP, and the target is 2R by default. Its options are under "Pullback strategy" in Settings (`Scan:Pullback:*` in `appsettings.json`).
 
 Notes:
 - Both strategies produce the same `VwapSignal`, so the optimizer, Exit Monitor, grids and CSV work unchanged. The scan summary is labelled with the strategy name.
