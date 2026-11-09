@@ -59,3 +59,9 @@ Notes:
 - For VwapPullback, `StretchAtr` is negative (the close is above VWAP) and `net_gain_at_vwap_inr` describes a downside scenario, since VWAP lies below the entry. Stop Reprieve is effectively inactive for it.
 - New strategies plug in through `StrategyCatalog` in `Strategies.cs` (implement `ISignalState`).
 - The signal logic was compiled and tested outside MAUI. Backtest before relying on it.
+
+## Indicators and optional filters
+Every signal carries RSI(14), SuperTrend (10, 3) and EMA 9 / 20 (`Indicators.cs`). They are shown under each signal and added to the signals CSV as `rsi`, `supertrend`, `ema_fast`, `ema_slow`.
+Settings > Indicators sets the periods. Settings > "ScalpVwap filters" and "Pullback filters" switch three optional filters on per strategy: SuperTrend bullish, close above the fast EMA, and RSI within a min/max window. All filters are **off by default**, so behavior is unchanged until you turn one on. A filter drops a signal the strategy already found; the scan summary then shows how many were rejected.
+`VwapSignal` (in `VwapStrategy.cs`) gained four optional trailing fields for these values; `VwapPullback` now uses EMA 9 / 20 for its uptrend test. The filters are not backtested: check them on real data before relying on them.
+

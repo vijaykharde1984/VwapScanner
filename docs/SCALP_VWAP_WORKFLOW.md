@@ -113,6 +113,26 @@ Each scan also records how many candles passed each test on its own (below VWAP,
 
 Source: `VwapStrategy.cs`.
 
+## 5b. Indicators and optional filters
+
+Every signal now also carries **RSI(14)**, the **SuperTrend** direction (period 10, multiplier 3) and the **EMA 9 / EMA 20** values. They are shown under each signal in the app and added to the signals CSV as `rsi`, `supertrend`, `ema_fast` and `ema_slow`.
+
+Three optional filters can then drop a signal the strategy already found. They are applied after the strategy rules and are **all off by default**, so behavior is unchanged until you switch one on in Settings (section "ScalpVwap filters"):
+
+| Filter (setting) | Rule when on | Default |
+|---|---|---|
+| Require SuperTrend bullish (`UseSuperTrend`) | Price must be above the SuperTrend line | Off |
+| Require close above fast EMA (`UseEma`) | The signal candle must close above EMA 9 | Off |
+| Require RSI in range (`UseRsi`) | RSI must lie between Min RSI and Max RSI | Off, window 0 to 40 |
+
+Indicator periods (Settings > Indicators): fast EMA 9, slow EMA 20, RSI period 14, SuperTrend period 10, SuperTrend multiplier 3.
+
+ScalpVwap buys weakness, so the RSI window defaults to oversold-ish values. A SuperTrend filter will remove many mean-reversion entries, because stocks bought below VWAP are often still in a SuperTrend downtrend.
+
+The scan summary adds a line such as "Indicator filters: 4 strategy signal(s) checked, 3 rejected (RSI 2, SuperTrend 1, EMA 0)." when a filter is on.
+
+Source: `Indicators.cs`.
+
 ## 6. Rank signals and build the portfolio
 
 Signals are listed newest first, then by score:

@@ -252,6 +252,17 @@ public partial class SettingsPage : ContentPage
                 Show(Error("Scan:Pullback:MaxRiskAtr"), "Must be larger than the min stop distance.");
                 ok = false;
             }
+            if (int.Parse(values["Scan:Indicators:EmaFast"]) >= int.Parse(values["Scan:Indicators:EmaSlow"]))
+            {
+                Show(Error("Scan:Indicators:EmaSlow"), "Must be larger than the fast EMA period.");
+                ok = false;
+            }
+            foreach (var set in new[] { "ScalpFilters", "PullbackFilters" })
+                if (Dec(values, $"Scan:{set}:MinRsi") >= Dec(values, $"Scan:{set}:MaxRsi"))
+                {
+                    Show(Error($"Scan:{set}:MaxRsi"), "Must be larger than the min RSI.");
+                    ok = false;
+                }
             if (values["Scan:At"].Length > 0 && values["Scan:Date"].Length == 0)
             {
                 Show(Error("Scan:At"), "Pick a replay date as well, or clear the replay time.");

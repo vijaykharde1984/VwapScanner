@@ -26,6 +26,10 @@ public static class GridCsv
         "day_low",
         "day_close",
         "ohlc_as_of",
+        "rsi",
+        "supertrend",
+        "ema_fast",
+        "ema_slow",
     ];
 
     public static readonly string[] PositionHeaders =
@@ -100,6 +104,10 @@ public static class GridCsv
             N(s.Stop),
             N(s.Target),
             .. OhlcCells(ohlc),
+            s.Rsi is { } rsi ? N(rsi) : "",
+            s.SuperTrendUp is { } up ? (up ? "up" : "down") : "",
+            s.EmaFast is { } ef ? N(ef) : "",
+            s.EmaSlow is { } es ? N(es) : "",
         ];
 
     public static string[] PositionCells(

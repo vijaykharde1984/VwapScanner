@@ -279,6 +279,129 @@ public sealed record SettingDef(
             "HH:mm or HH:mm:ss"
         ),
         new(
+            "Scan:Indicators:EmaFast",
+            "Fast EMA period",
+            SettingKind.Integer,
+            "Indicators",
+            "Shown on every signal; the VwapPullback uptrend test uses it. Must be smaller than the slow EMA.",
+            Min: 2,
+            Max: 100
+        ),
+        new(
+            "Scan:Indicators:EmaSlow",
+            "Slow EMA period",
+            SettingKind.Integer,
+            "Indicators",
+            "",
+            Min: 3,
+            Max: 200
+        ),
+        new(
+            "Scan:Indicators:RsiPeriod",
+            "RSI period",
+            SettingKind.Integer,
+            "Indicators",
+            "RSI (Wilder) of the 1-minute closes.",
+            Min: 2,
+            Max: 50
+        ),
+        new(
+            "Scan:Indicators:SuperTrendPeriod",
+            "SuperTrend period (ATR)",
+            SettingKind.Integer,
+            "Indicators",
+            "",
+            Min: 2,
+            Max: 50
+        ),
+        new(
+            "Scan:Indicators:SuperTrendMultiplier",
+            "SuperTrend multiplier",
+            SettingKind.Decimal,
+            "Indicators",
+            "Bands = (high+low)/2 +/- multiplier x ATR.",
+            Min: 0.5m,
+            Max: 10m
+        ),
+        new(
+            "Scan:ScalpFilters:UseSuperTrend",
+            "Require SuperTrend bullish",
+            SettingKind.Bool,
+            "ScalpVwap filters",
+            "Off = no effect. On = a ScalpVwap signal is dropped unless the price is above the SuperTrend line."
+        ),
+        new(
+            "Scan:ScalpFilters:UseEma",
+            "Require close above fast EMA",
+            SettingKind.Bool,
+            "ScalpVwap filters",
+            "Off = no effect. On = the signal candle must close above the fast EMA."
+        ),
+        new(
+            "Scan:ScalpFilters:UseRsi",
+            "Require RSI in range",
+            SettingKind.Bool,
+            "ScalpVwap filters",
+            "Off = no effect. On = the RSI must lie between the min and max below."
+        ),
+        new(
+            "Scan:ScalpFilters:MinRsi",
+            "Min RSI",
+            SettingKind.Decimal,
+            "ScalpVwap filters",
+            "",
+            Min: 0,
+            Max: 100
+        ),
+        new(
+            "Scan:ScalpFilters:MaxRsi",
+            "Max RSI",
+            SettingKind.Decimal,
+            "ScalpVwap filters",
+            "",
+            Min: 0,
+            Max: 100
+        ),
+        new(
+            "Scan:PullbackFilters:UseSuperTrend",
+            "Require SuperTrend bullish",
+            SettingKind.Bool,
+            "Pullback filters",
+            "Off = no effect. On = a VwapPullback signal is dropped unless the price is above the SuperTrend line."
+        ),
+        new(
+            "Scan:PullbackFilters:UseEma",
+            "Require close above fast EMA",
+            SettingKind.Bool,
+            "Pullback filters",
+            "Off = no effect. On = the signal candle must close above the fast EMA."
+        ),
+        new(
+            "Scan:PullbackFilters:UseRsi",
+            "Require RSI in range",
+            SettingKind.Bool,
+            "Pullback filters",
+            "Off = no effect. On = the RSI must lie between the min and max below."
+        ),
+        new(
+            "Scan:PullbackFilters:MinRsi",
+            "Min RSI",
+            SettingKind.Decimal,
+            "Pullback filters",
+            "",
+            Min: 0,
+            Max: 100
+        ),
+        new(
+            "Scan:PullbackFilters:MaxRsi",
+            "Max RSI",
+            SettingKind.Decimal,
+            "Pullback filters",
+            "",
+            Min: 0,
+            Max: 100
+        ),
+        new(
             "Portfolio:Capital",
             "Capital (INR)",
             SettingKind.Decimal,

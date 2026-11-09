@@ -33,4 +33,12 @@ public sealed class ScanSettings
     public string StrategyName { get; set; } = StrategyCatalog.ScalpVwap;
 
     public PullbackOptions Pullback { get; set; } = new();
+
+    /// <summary>Periods of the EMA, RSI and SuperTrend values shown on every signal.</summary>
+    public IndicatorOptions Indicators { get; set; } = new();
+
+    /// <summary>Optional RSI / SuperTrend / EMA filters, one set per strategy (all off by default).</summary>
+    public SignalFilterOptions ScalpFilters { get; set; } = SignalFilterOptions.ForScalp();
+
+    public SignalFilterOptions PullbackFilters { get; set; } = SignalFilterOptions.ForPullback();
 }

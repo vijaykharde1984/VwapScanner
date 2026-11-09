@@ -1,8 +1,9 @@
 namespace VwapScanner;
 
-public sealed record ScanRequest(DateOnly? Date, TimeOnly? At, int Lookback, bool UseBenchmark, VwapOptions Options, string StrategyName = StrategyCatalog.ScalpVwap, PullbackOptions? Pullback = null);
+public sealed record ScanRequest(DateOnly? Date, TimeOnly? At, int Lookback, bool UseBenchmark, VwapOptions Options, string StrategyName = StrategyCatalog.ScalpVwap, PullbackOptions? Pullback = null,
+    IndicatorOptions? Indicators = null, SignalFilterOptions? ScalpFilters = null, SignalFilterOptions? PullbackFilters = null);
 
-public sealed record ScanResult(string Date, string AsOf, int Scanned, int Failed, bool BenchmarkFilter, string? Message, IReadOnlyList<VwapSignal> Signals, VwapDiagnostics? Diagnostics = null, string StrategyName = StrategyCatalog.ScalpVwap, string? DiagnosticsText = null);
+public sealed record ScanResult(string Date, string AsOf, int Scanned, int Failed, bool BenchmarkFilter, string? Message, IReadOnlyList<VwapSignal> Signals, VwapDiagnostics? Diagnostics = null, string StrategyName = StrategyCatalog.ScalpVwap, string? DiagnosticsText = null, string? FilterText = null);
 
 /// <summary>Runs only the ScalpVwap strategy over a list of stocks and returns only the stocks that signal.</summary>
 /// <summary>Completed 1-minute candles already downloaded, per instrument and day, so a repeat scan only fetches the new minutes.</summary>
@@ -72,7 +73,8 @@ public sealed class Scanner(KiteClient api, IReadOnlyDictionary<string, int> mas
 
         var strategyName = StrategyCatalog.Normalize(req.StrategyName);
         var pullbackDiagnostics = strategyName == StrategyCatalog.VwapPullback ? new PullbackDiagnostics() : null;
-        var newState = StrategyCatalog.Factory(strategyName, req, pullbackDiagnostics);
+        var filterDiagnostics = req.Indicators is not null ? new FilterDiagnostics() : null;
+        var newState = StrategyCatalog.Factory(strategyName, req, pullbackDiagnostics, filterDiagnostics);
         var signals = new List<VwapSignal>();
         var diagnostics = new VwapDiagnostics();
         int scanned = 0, failed = 0;
@@ -96,6 +98,6 @@ public sealed class Scanner(KiteClient api, IReadOnlyDictionary<string, int> mas
             if (scanned % 25 == 0) log?.Invoke($"  scanned {scanned}/{list.Length}...");
         }
         var ordered = signals.OrderByDescending(s => s.BarTime).ThenByDescending(s => s.Score).ToList();
-        return new(D(), A(), scanned, failed, req.UseBenchmark, notes.Count == 0 ? null : string.Join(' ', notes), ordered, diagnostics, strategyName, pullbackDiagnostics?.Describe(diagnostics.BenchmarkBlocked));
+        return new(D(), A(), scanned, failed, req.UseBenchmark, notes.Count == 0 ? null : string.Join(' ', notes), ordered, diagnostics, strategyName, pullbackDiagnostics?.Describe(diagnostics.BenchmarkBlocked), filterDiagnostics is { Candidates: > 0 } ? filterDiagnostics.Describe() : null);
     }
 }

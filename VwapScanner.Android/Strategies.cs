@@ -49,11 +49,19 @@ public static class StrategyCatalog
             _ => "ScalpVwap: buys a volume-backed turn-up after the price is stretched at least 1 ATR below VWAP.",
         };
 
-    /// <summary>Creates a fresh state for each instrument. <paramref name="pullbackDiagnostics"/> is shared by all states of one scan.</summary>
-    public static Func<ISignalState> Factory(string name, ScanRequest request, PullbackDiagnostics? pullbackDiagnostics) =>
-        Normalize(name) switch
-        {
-            VwapPullback => () => new PullbackState(request.Pullback ?? new PullbackOptions(), pullbackDiagnostics),
-            _ => () => new ScalpVwapState(request.Options),
-        };
+    /// <summary>
+    /// Creates a fresh state for each instrument. <paramref name="pullbackDiagnostics"/> and <paramref name="filterDiagnostics"/> are shared by all states of one scan.
+    /// When the request carries indicator settings the strategy is wrapped in <see cref="FilteredState"/>: signals then show RSI, SuperTrend and EMA, and the filters that are on apply.
+    /// </summary>
+    public static Func<ISignalState> Factory(string name, ScanRequest request, PullbackDiagnostics? pullbackDiagnostics, FilterDiagnostics? filterDiagnostics = null)
+    {
+        var strategy = Normalize(name);
+        Func<ISignalState> inner = strategy == VwapPullback
+            ? () => new PullbackState(request.Pullback ?? new PullbackOptions(), pullbackDiagnostics)
+            : () => new ScalpVwapState(request.Options);
+        if (request.Indicators is not { } indicators)
+            return inner;
+        var filter = strategy == VwapPullback ? request.PullbackFilters : request.ScalpFilters;
+        return () => new FilteredState(inner(), indicators, filter, filterDiagnostics);
+    }
 }

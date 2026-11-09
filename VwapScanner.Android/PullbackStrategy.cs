@@ -49,7 +49,7 @@ public sealed class PullbackDiagnostics
 {
     public int NotReady { get; set; }
     public int Evaluated { get; set; }
-    public int InUptrend { get; set; }        // above VWAP most of the time, VWAP rising, EMA 9 > 21, higher highs and higher lows
+    public int InUptrend { get; set; }        // above VWAP most of the time, VWAP rising, EMA 9 > 20, higher highs and higher lows
     public int Touched { get; set; }          // low reached the VWAP zone within the last PullbackBars candles
     public int Confirmed { get; set; }        // bullish candle closing above the previous high, upper half of its range, above VWAP
     public int VolumeOk { get; set; }
@@ -67,11 +67,11 @@ public sealed class PullbackDiagnostics
 }
 
 /// <summary>
-/// Running 1-minute state of one instrument for the VWAP Trend Pullback strategy (session VWAP, EMA 9/21, ATR 10, relative volume, swing highs and lows).
+/// Running 1-minute state of one instrument for the VWAP Trend Pullback strategy (session VWAP, EMA 9/20, ATR 10, relative volume, swing highs and lows).
 /// Same shape as <see cref="VwapState"/>: feed every completed candle to <see cref="Update"/>, then ask <see cref="Candidate"/> about the latest one.
 ///
 /// Long entry on the latest candle, all of:
-///   Uptrend        at least MinAboveVwapPercent of the last TrendBars closes above VWAP, VWAP up by MinVwapSlopeAtr ATRs over that window, EMA 9 above EMA 21,
+///   Uptrend        at least MinAboveVwapPercent of the last TrendBars closes above VWAP, VWAP up by MinVwapSlopeAtr ATRs over that window, EMA 9 above EMA 20,
 ///                  and the last two swing highs and the last two swing lows both rising (higher highs and higher lows).
 ///   Pullback       within the last PullbackBars candles a low came within TouchAtr ATRs of VWAP (or dipped at most MaxBreakAtr ATRs under it).
 ///   Confirmation   the candle is green, closes above the previous candle's high and in the upper half of its range, and closes above VWAP.
@@ -85,7 +85,7 @@ public sealed class PullbackDiagnostics
 /// </summary>
 public sealed class PullbackState(PullbackOptions options, PullbackDiagnostics? diagnostics = null) : ISignalState
 {
-    private const int FastEma = 9, SlowEma = 21, AtrPeriod = 10;
+    private const int FastEma = 9, SlowEma = 20, AtrPeriod = 10;
     private readonly PullbackOptions o = options;
     private readonly List<Candle> bars = [];
     private readonly List<decimal> vwapSeries = [];

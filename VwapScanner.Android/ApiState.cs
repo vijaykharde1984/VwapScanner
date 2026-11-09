@@ -298,7 +298,9 @@ public sealed class ApiState(IConfiguration config, string contentRoot)
             var strategyName = StrategyCatalog.Normalize(scan.StrategyName);
             if (strategyName == StrategyCatalog.VwapPullback)
                 scan.Pullback.Validate();
-            request = new(date, at, scan.Lookback, scan.UseBenchmark, scan.Strategy, strategyName, scan.Pullback);
+            scan.Indicators.Validate();
+            (strategyName == StrategyCatalog.VwapPullback ? scan.PullbackFilters : scan.ScalpFilters).Validate(strategyName);
+            request = new(date, at, scan.Lookback, scan.UseBenchmark, scan.Strategy, strategyName, scan.Pullback, scan.Indicators, scan.ScalpFilters, scan.PullbackFilters);
         }
         catch (Exception e)
             when (e is ArgumentException or FormatException or InvalidOperationException)

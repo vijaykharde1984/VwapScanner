@@ -16,7 +16,8 @@ public sealed class VwapOptions
 }
 
 public sealed record VwapSignal(string Symbol, int InstrumentId, DateTimeOffset BarTime, decimal Close, decimal Vwap,
-    decimal StretchAtr, decimal Atr, decimal RelativeVolume, decimal Score, decimal Stop, decimal Target, long BarVolume = 0);
+    decimal StretchAtr, decimal Atr, decimal RelativeVolume, decimal Score, decimal Stop, decimal Target, long BarVolume = 0,
+    decimal? Rsi = null, bool? SuperTrendUp = null, decimal? EmaFast = null, decimal? EmaSlow = null);
 
 /// <summary>
 /// Running 1-minute indicators for one instrument over one session (EMA 5/13, ATR 10, 3-bar momentum, session VWAP, relative volume).

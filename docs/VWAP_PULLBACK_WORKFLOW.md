@@ -27,7 +27,7 @@ The strategy is chosen in Settings > Scan > Strategy (`Scan:StrategyName`: `Scal
 | Minimum relative volume | 1.0 |
 | Minimum candle turnover | ₹5 lakh |
 
-Fixed in code (not settings): EMA 9 and EMA 21, ATR period 10, relative volume against the previous 20 candles.
+Fixed in code (not settings): EMA 9 and EMA 20, ATR period 10, relative volume against the previous 20 candles.
 
 Capital, fees, risk limits, universe and the benchmark filter are shared with `ScalpVwap` and stay configurable. A bad combination (for example, entry start not before last entry) is rejected when saving and again before a scan runs (`PullbackOptions.Validate()`).
 
@@ -56,7 +56,7 @@ For every stock, a fresh `PullbackState` is created for the scan and fed the day
 
 - Session VWAP, using cumulative typical price × volume, with the whole VWAP series kept for look-backs.
 - ATR (10), using the average of true range.
-- EMA 9 and EMA 21.
+- EMA 9 and EMA 20.
 - Relative volume: the candle's volume against the average of the previous 20 candles.
 
 The VWAP calculation is:
@@ -91,7 +91,7 @@ Stock candles at those times are skipped and counted as "NIFTY downtrend" in the
 5. **Uptrend regime** (all four):
    - at least 70% of the last 30 closes were above the VWAP of their own minute;
    - VWAP has risen at least 0.5 ATR over those 30 candles;
-   - EMA 9 is above EMA 21;
+   - EMA 9 is above EMA 20;
    - structure: the latest swing high is above the one before it, and the latest swing low is above the one before it (a swing is a candle higher or lower than the 3 candles each side).
 6. **VWAP touch:** within the last 8 candles, a candle's low reached VWAP (at most 0.3 ATR above it) without falling more than 0.5 ATR below it. A deeper dive is treated as a break, not a pullback.
 7. **Stop distance:** the risk (close minus stop) is between 0.5 and 2.5 ATR.
@@ -116,6 +116,26 @@ StretchAtr   = (VWAP − close) / ATR        (negative here: the close is above 
 Each scan also records how many candles passed each test on its own (uptrend, touch, confirmation, volume, turnover, stop distance, room, target, window, cool-down). This text is shown in the scan summary to explain why few or no signals appeared.
 
 Source: `PullbackStrategy.cs`.
+
+## 5b. Indicators and optional filters
+
+Every signal now also carries **RSI(14)**, the **SuperTrend** direction (period 10, multiplier 3) and the **EMA 9 / EMA 20** values. They are shown under each signal in the app and added to the signals CSV as `rsi`, `supertrend`, `ema_fast` and `ema_slow`.
+
+Three optional filters can then drop a signal the strategy already found. They are applied after the strategy rules and are **all off by default**, so behavior is unchanged until you switch one on in Settings (section "Pullback filters"):
+
+| Filter (setting) | Rule when on | Default |
+|---|---|---|
+| Require SuperTrend bullish (`UseSuperTrend`) | Price must be above the SuperTrend line | Off |
+| Require close above fast EMA (`UseEma`) | The signal candle must close above EMA 9 | Off |
+| Require RSI in range (`UseRsi`) | RSI must lie between Min RSI and Max RSI | Off, window 45 to 75 |
+
+Indicator periods (Settings > Indicators): fast EMA 9, slow EMA 20, RSI period 14, SuperTrend period 10, SuperTrend multiplier 3.
+
+VwapPullback buys a dip inside an uptrend, so the RSI window defaults to "not collapsing, not yet overbought". Its own uptrend test already uses EMA 9 above EMA 20 and rising VWAP, so the EMA and SuperTrend filters overlap with it.
+
+The scan summary adds a line such as "Indicator filters: 4 strategy signal(s) checked, 3 rejected (RSI 2, SuperTrend 1, EMA 0)." when a filter is on.
+
+Source: `Indicators.cs`.
 
 ## 6. Rank signals and build the portfolio
 
@@ -202,6 +222,6 @@ StretchAtr = (100.00 − 100.50) / 0.40     = −1.25
 Score  = 1 + 1.5/3 + 0.8/2 + (1.50/0.70)/6 ≈ 2.26
 ```
 
-It becomes a signal only if the uptrend regime (70% above VWAP, rising VWAP, EMA 9 above EMA 21, higher swing highs and lows), the entry window, turnover and benchmark conditions also pass, and no other signal fired in the last 8 candles. The portfolio optimizer then decides whether it is bought and in what quantity.
+It becomes a signal only if the uptrend regime (70% above VWAP, rising VWAP, EMA 9 above EMA 20, higher swing highs and lows), the entry window, turnover and benchmark conditions also pass, and no other signal fired in the last 8 candles. The portfolio optimizer then decides whether it is bought and in what quantity.
 
 These rules define behavior; they do not establish that a signal or the strategy will be profitable. The strategy has been tested on synthetic candles only and should be backtested on real 1-minute data before relying on it.

@@ -419,6 +419,19 @@ public partial class MainPage : ContentPage
         return new ShareFile(path, "text/csv");
     }
 
+    /// <summary>"RSI 52.3 | SuperTrend up | EMA 101.20 above 100.80" for a signal, or nothing when the values are not known.</summary>
+    private static string IndicatorLine(VwapSignal s)
+    {
+        var parts = new List<string>();
+        if (s.Rsi is { } rsi)
+            parts.Add($"RSI {F(rsi)}");
+        if (s.SuperTrendUp is { } up)
+            parts.Add($"SuperTrend {(up ? "up" : "down")}");
+        if (s.EmaFast is { } fast && s.EmaSlow is { } slow)
+            parts.Add($"EMA {F(fast)} {(fast >= slow ? "above" : "below")} {F(slow)}");
+        return parts.Count == 0 ? "" : "\n" + string.Join(" | ", parts);
+    }
+
     private void Show(RunResult r)
     {
         var scan = r.Scan;
@@ -438,6 +451,8 @@ public partial class MainPage : ContentPage
             summary +=
                 $"\nCandles checked {d.Evaluated} (not ready {d.NotReady}, NIFTY downtrend {d.BenchmarkBlocked}). Each test alone: below VWAP {d.BelowVwap}, turn-up {d.TurnUp}, "
                 + $"rel. volume {d.RelativeVolumeOk}, turnover {d.TurnoverOk}, target clears costs {d.TargetClearsCosts}, entry window {d.InEntryWindow}.";
+        if (scan.FilterText is { } ft)
+            summary += "\n" + ft;
         SummaryLabel.Text = summary;
 
         SignalsHeader.IsVisible = true;
@@ -449,7 +464,7 @@ public partial class MainPage : ContentPage
             SignalsList,
             scan.Signals.Select(s => new Row(
                     $"{s.Symbol}   {s.BarTime:HH:mm}   score {F(s.Score)}",
-                    $"Close {F(s.Close)} | VWAP {F(s.Vwap)} | stretch {F(s.StretchAtr)} ATR | rel. vol {F(s.RelativeVolume)}\nStop {F(s.Stop)} | Target {F(s.Target)}",
+                    $"Close {F(s.Close)} | VWAP {F(s.Vwap)} | stretch {F(s.StretchAtr)} ATR | rel. vol {F(s.RelativeVolume)}\nStop {F(s.Stop)} | Target {F(s.Target)}" + IndicatorLine(s),
                     coordinator.NewKeys.Contains(ScanCoordinator.Key(s))
                 ))
                 .ToList()
