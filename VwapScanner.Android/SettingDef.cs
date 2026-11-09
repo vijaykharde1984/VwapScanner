@@ -512,7 +512,7 @@ public sealed record SettingDef(
             case SettingKind.ShortTime:
                 if (text.Length == 0)
                     return true;
-                if (TimeOnly.TryParseExact(text, "HH:mm", inv, DateTimeStyles.None, out var s))
+                if (TimeOnly.TryParseExact(text, ["HH:mm", "HH:mm:ss"], inv, DateTimeStyles.None, out var s))
                 {
                     value = s.ToString("HH:mm", inv);
                     return true;
