@@ -17,7 +17,7 @@ public partial class MainPage : ContentPage
 
     private readonly ResultTable signalsTable = new(
         SignalHeaders,
-        [110, 110, 200, 90, 90, 100, 80, 120, 80, 90, 90, 90, 90, 90, 90, 90]
+        [110, 110, 200, 90, 90, 100, 80, 120, 80, 90, 90, 90, 90, 90, 90, 90, 70, 100, 90, 90]
     );
     private readonly ResultTable portfolioTable = new(
         PositionHeaders,
