@@ -11,10 +11,13 @@ namespace VwapScanner;
 /// </summary>
 public sealed class AppConfig
 {
-    private const string KeyApi = "zerodha_api_key", KeySecret = "zerodha_api_secret", OverridePrefix = "cfg:";
+    private const string KeyApi = "zerodha_api_key",
+        KeySecret = "zerodha_api_secret",
+        OverridePrefix = "cfg:";
     private readonly Dictionary<string, string?> defaults = [];
     private bool secretsLoaded;
-    private string defaultApiKey = "", defaultApiSecret = "";
+    private string defaultApiKey = "",
+        defaultApiSecret = "";
 
     public IConfigurationRoot Root { get; }
 
@@ -26,19 +29,31 @@ public sealed class AppConfig
     public static AppConfig Load()
     {
         var builder = new ConfigurationBuilder();
-        using var stream = Task.Run(() => FileSystem.OpenAppPackageFileAsync("appsettings.json")).GetAwaiter().GetResult();
+        using var stream = Task.Run(() => FileSystem.OpenAppPackageFileAsync("appsettings.json"))
+            .GetAwaiter()
+            .GetResult();
         builder.AddJsonStream(stream);
         // Optional, git-ignored Resources\Raw\appsettings.Local.json (same as the web API's): supplies the default API key and secret.
         Stream? local = null;
         try
         {
-            local = Task.Run(() => FileSystem.OpenAppPackageFileAsync("appsettings.Local.json")).GetAwaiter().GetResult();
+            local = Task.Run(() => FileSystem.OpenAppPackageFileAsync("appsettings.Local.json"))
+                .GetAwaiter()
+                .GetResult();
             builder.AddJsonStream(local);
         }
-        catch (Exception) { local?.Dispose(); local = null; /* no local file: the user types the key in Settings */ }
+        catch (Exception)
+        {
+            local?.Dispose();
+            local = null; /* no local file: the user types the key in Settings */
+        }
         var root = builder.Build();
         local?.Dispose();
-        var config = new AppConfig(root) { defaultApiKey = root["Zerodha:ApiKey"] ?? "", defaultApiSecret = root["Zerodha:ApiSecret"] ?? "" };
+        var config = new AppConfig(root)
+        {
+            defaultApiKey = root["Zerodha:ApiKey"] ?? "",
+            defaultApiSecret = root["Zerodha:ApiSecret"] ?? "",
+        };
         foreach (var def in SettingDef.All)
         {
             config.defaults[def.Key] = root[def.Key];
@@ -46,8 +61,10 @@ public sealed class AppConfig
             if (Preferences.Default.ContainsKey(saved))
             {
                 // A stored value that no longer passes validation (older version, edited by hand) is dropped in favour of the default.
-                if (def.TryNormalize(Preferences.Default.Get(saved, ""), out var ok, out _)) root[def.Key] = ok;
-                else Preferences.Default.Remove(saved);
+                if (def.TryNormalize(Preferences.Default.Get(saved, ""), out var ok, out _))
+                    root[def.Key] = ok;
+                else
+                    Preferences.Default.Remove(saved);
             }
         }
         return config;
@@ -56,61 +73,130 @@ public sealed class AppConfig
     public string ApiKey => Root["Zerodha:ApiKey"] ?? "";
     public string ApiSecret => Root["Zerodha:ApiSecret"] ?? "";
     public string RedirectUrl => Root["Zerodha:RedirectUrl"] ?? "http://127.0.0.1:9079/";
+
     public string Value(string key) => Root[key] ?? "";
 
-    public int AutoRefreshMinutes => int.TryParse(Root["App:AutoRefreshMinutes"], NumberStyles.Integer, CultureInfo.InvariantCulture, out var m) ? Math.Clamp(m, 1, 120) : 5;
+    public int AutoRefreshMinutes =>
+        int.TryParse(
+            Root["App:AutoRefreshMinutes"],
+            NumberStyles.Integer,
+            CultureInfo.InvariantCulture,
+            out var m
+        )
+            ? Math.Clamp(m, 1, 120)
+            : 5;
+
     /// <summary>Auto-refresh starts by itself when the app opens (signed in, market day, before 15:35 IST).</summary>
     public bool AutoStart => !bool.TryParse(Root["App:AutoStart"], out var a) || a;
+
     /// <summary>Daily reminder time (IST, weekdays); null when the setting is empty (no reminder).</summary>
-    public TimeOnly? ReminderTime => TimeOnly.TryParseExact(Root["App:ReminderTime"], "HH:mm", CultureInfo.InvariantCulture, DateTimeStyles.None, out var t) ? t : null;
+    public TimeOnly? ReminderTime =>
+        TimeOnly.TryParseExact(
+            Root["App:ReminderTime"],
+            "HH:mm",
+            CultureInfo.InvariantCulture,
+            DateTimeStyles.None,
+            out var t
+        )
+            ? t
+            : null;
     public bool ReminderSound => !bool.TryParse(Root["App:ReminderSound"], out var s) || s;
     public bool ReminderVibrate => !bool.TryParse(Root["App:ReminderVibrate"], out var v) || v;
+
     /// <summary>Save the day's CSV files automatically when the market closes.</summary>
     public bool SaveCsvAtClose => !bool.TryParse(Root["App:SaveCsvAtClose"], out var c) || c;
+
     /// <summary>The Exit Monitor: a separate loop that decides when each portfolio row should be sold.</summary>
-    public bool ExitMonitorEnabled => !bool.TryParse(Root["App:ExitMonitorEnabled"], out var t) || t;
-    public int ExitCheckSeconds => int.TryParse(Root["App:ExitCheckSeconds"], NumberStyles.Integer, CultureInfo.InvariantCulture, out var m) ? Math.Clamp(m, 15, 300) : 15;
+    public bool ExitMonitorEnabled =>
+        !bool.TryParse(Root["App:ExitMonitorEnabled"], out var t) || t;
+    public int ExitCheckSeconds =>
+        int.TryParse(
+            Root["App:ExitCheckSeconds"],
+            NumberStyles.Integer,
+            CultureInfo.InvariantCulture,
+            out var m
+        )
+            ? Math.Clamp(m, 15, 300)
+            : 15;
+
     /// <summary>Positions still held at this IST time are squared off (09:30 to 15:30, default 15:15).</summary>
-    public TimeSpan ExitCloseTime => TimeOnly.TryParseExact(Root["App:ExitCloseTime"], "HH:mm", CultureInfo.InvariantCulture, DateTimeStyles.None, out var c)
-        && c.ToTimeSpan() >= new TimeSpan(9, 30, 0) && c.ToTimeSpan() <= new TimeSpan(15, 30, 0) ? c.ToTimeSpan() : new TimeSpan(15, 15, 0);
+    public TimeSpan ExitCloseTime =>
+        TimeOnly.TryParseExact(
+            Root["App:ExitCloseTime"],
+            "HH:mm",
+            CultureInfo.InvariantCulture,
+            DateTimeStyles.None,
+            out var c
+        )
+        && c.ToTimeSpan() >= new TimeSpan(9, 30, 0)
+        && c.ToTimeSpan() <= new TimeSpan(15, 30, 0)
+            ? c.ToTimeSpan()
+            : new TimeSpan(15, 15, 0);
+
     /// <summary>The Reversal Guard: protects a position that rose toward the target and is now fading.</summary>
     public bool GuardEnabled => !bool.TryParse(Root["App:GuardEnabled"], out var g) || g;
     public decimal GuardArmPercent => Dec("App:GuardArmPercent", 50, 10, 100);
     public decimal GuardGivebackPercent => Dec("App:GuardGivebackPercent", 40, 10, 100);
     public int GuardFadeCandles => (int)Dec("App:GuardFadeCandles", 3, 2, 10);
     public decimal GuardBreakevenBps => Dec("App:GuardBreakevenBps", 5, 0, 100);
+
     private decimal Dec(string key, decimal fallback, decimal min, decimal max) =>
-        decimal.TryParse(Root[key], NumberStyles.Number, CultureInfo.InvariantCulture, out var v) ? Math.Clamp(v, min, max) : fallback;
+        decimal.TryParse(Root[key], NumberStyles.Number, CultureInfo.InvariantCulture, out var v)
+            ? Math.Clamp(v, min, max)
+            : fallback;
+
     /// <summary>Stop Reprieve: when the stop is touched but the price looks set to recover, wait this long before selling.</summary>
-    public bool StopReprieveEnabled => !bool.TryParse(Root["App:StopReprieveEnabled"], out var e) || e;
+    public bool StopReprieveEnabled =>
+        !bool.TryParse(Root["App:StopReprieveEnabled"], out var e) || e;
     public int StopReprieveMinutes => (int)Dec("App:StopReprieveMinutes", 15, 1, 60);
     public bool Notify => !bool.TryParse(Root["App:Notify"], out var n) || n;
+
     /// <summary>True when a past day is being replayed, so the market-hours checks of auto-refresh do not apply.</summary>
     public bool Replaying => !string.IsNullOrWhiteSpace(Root["Scan:Date"]);
 
     public async Task LoadSecretsAsync()
     {
-        if (secretsLoaded) return;
+        if (secretsLoaded)
+            return;
         try
         {
             // Values typed in Settings win over the bundled defaults.
-            if (await SecureStorage.Default.GetAsync(KeyApi) is { Length: > 0 } key) Root["Zerodha:ApiKey"] = key;
-            if (await SecureStorage.Default.GetAsync(KeySecret) is { Length: > 0 } secret) Root["Zerodha:ApiSecret"] = secret;
+            if (await SecureStorage.Default.GetAsync(KeyApi) is { Length: > 0 } key)
+                Root["Zerodha:ApiKey"] = key;
+            if (await SecureStorage.Default.GetAsync(KeySecret) is { Length: > 0 } secret)
+                Root["Zerodha:ApiSecret"] = secret;
         }
-        catch (Exception) { /* a broken keystore just means the user types the key again */ }
+        catch (Exception)
+        { /* a broken keystore just means the user types the key again */
+        }
         secretsLoaded = true;
     }
 
     /// <summary>Empty (use the bundled default) or 6-64 letters and digits.</summary>
-    public static bool IsValidCredential(string value) => value.Length == 0 || (value.Length is >= 6 and <= 64 && value.All(char.IsAsciiLetterOrDigit));
+    public static bool IsValidCredential(string value) =>
+        value.Length == 0
+        || (value.Length is >= 6 and <= 64 && value.All(char.IsAsciiLetterOrDigit));
 
     public async Task SaveCredentialsAsync(string apiKey, string apiSecret)
     {
-        apiKey = apiKey.Trim(); apiSecret = apiSecret.Trim();
-        if (!IsValidCredential(apiKey) || !IsValidCredential(apiSecret) || (apiKey.Length == 0) != (apiSecret.Length == 0))
-            throw new ArgumentException("API key and secret must both be given, using letters and digits only.");
-        if (apiKey.Length == 0) SecureStorage.Default.Remove(KeyApi); else await SecureStorage.Default.SetAsync(KeyApi, apiKey);
-        if (apiSecret.Length == 0) SecureStorage.Default.Remove(KeySecret); else await SecureStorage.Default.SetAsync(KeySecret, apiSecret);
+        apiKey = apiKey.Trim();
+        apiSecret = apiSecret.Trim();
+        if (
+            !IsValidCredential(apiKey)
+            || !IsValidCredential(apiSecret)
+            || (apiKey.Length == 0) != (apiSecret.Length == 0)
+        )
+            throw new ArgumentException(
+                "API key and secret must both be given, using letters and digits only."
+            );
+        if (apiKey.Length == 0)
+            SecureStorage.Default.Remove(KeyApi);
+        else
+            await SecureStorage.Default.SetAsync(KeyApi, apiKey);
+        if (apiSecret.Length == 0)
+            SecureStorage.Default.Remove(KeySecret);
+        else
+            await SecureStorage.Default.SetAsync(KeySecret, apiSecret);
         Root["Zerodha:ApiKey"] = apiKey.Length > 0 ? apiKey : defaultApiKey;
         Root["Zerodha:ApiSecret"] = apiSecret.Length > 0 ? apiSecret : defaultApiSecret;
         secretsLoaded = true;

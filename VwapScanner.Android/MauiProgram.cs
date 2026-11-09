@@ -5,13 +5,21 @@ public static class MauiProgram
     public static MauiApp CreateMauiApp()
     {
         // A forgotten background task that failed must not bring the app down.
-        TaskScheduler.UnobservedTaskException += (_, e) => { System.Diagnostics.Debug.WriteLine("[VwapScanner] " + e.Exception); AppLog.Error("Task", e.Exception); e.SetObserved(); };
+        TaskScheduler.UnobservedTaskException += (_, e) =>
+        {
+            System.Diagnostics.Debug.WriteLine("[VwapScanner] " + e.Exception);
+            AppLog.Error("Task", e.Exception);
+            e.SetObserved();
+        };
         var builder = MauiApp.CreateBuilder();
         builder.UseMauiApp<App>();
 
         builder.Services.AddSingleton(_ => AppConfig.Load());
         // Same business logic as the web API: one ApiState holds the Zerodha session, the instrument master and the candle cache.
-        builder.Services.AddSingleton(sp => new ApiState(sp.GetRequiredService<AppConfig>().Root, FileSystem.AppDataDirectory));
+        builder.Services.AddSingleton(sp => new ApiState(
+            sp.GetRequiredService<AppConfig>().Root,
+            FileSystem.AppDataDirectory
+        ));
         builder.Services.AddSingleton<INotifier, AndroidNotifier>();
         builder.Services.AddSingleton<IKeepAlive, AndroidKeepAlive>();
         builder.Services.AddSingleton<IFileSaver, AndroidFileSaver>();

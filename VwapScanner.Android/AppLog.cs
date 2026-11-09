@@ -13,7 +13,8 @@ public static partial class AppLog
 {
     private static readonly object Gate = new();
     private static readonly TimeSpan Ist = TimeSpan.FromHours(5.5);
-    private const int KeepDays = 30, MaxLineChars = 4000;
+    private const int KeepDays = 30,
+        MaxLineChars = 4000;
     private static bool cleaned;
 
     public static string Folder => Path.Combine(FileSystem.AppDataDirectory, "logs");
@@ -31,8 +32,11 @@ public static partial class AppLog
     {
         var business = ex is ZerodhaException or ConfigurationException;
         var text = (context is null ? "" : context + ": ") + ex.GetType().Name + ": " + ex.Message;
-        if (!business && ex.StackTrace is { } trace) text += Environment.NewLine + trace;
-        if (ex.InnerException is { } inner) text += Environment.NewLine + "  caused by " + inner.GetType().Name + ": " + inner.Message;
+        if (!business && ex.StackTrace is { } trace)
+            text += Environment.NewLine + trace;
+        if (ex.InnerException is { } inner)
+            text +=
+                Environment.NewLine + "  caused by " + inner.GetType().Name + ": " + inner.Message;
         Write("ERROR", area, text);
     }
 
@@ -41,28 +45,40 @@ public static partial class AppLog
         try
         {
             var text = Redact(message);
-            if (text.Length > MaxLineChars) text = text[..MaxLineChars] + "...";
-            var line = $"{Now.ToString("yyyy-MM-dd HH:mm:ss", CultureInfo.InvariantCulture)} IST [{level}] [{area}] {text}{Environment.NewLine}";
+            if (text.Length > MaxLineChars)
+                text = text[..MaxLineChars] + "...";
+            var line =
+                $"{Now.ToString("yyyy-MM-dd HH:mm:ss", CultureInfo.InvariantCulture)} IST [{level}] [{area}] {text}{Environment.NewLine}";
             lock (Gate)
             {
                 Directory.CreateDirectory(Folder);
                 File.AppendAllText(TodayFile, line, Encoding.UTF8);
-                if (!cleaned) { cleaned = true; DeleteOld(); }
+                if (!cleaned)
+                {
+                    cleaned = true;
+                    DeleteOld();
+                }
             }
         }
-        catch (Exception) { /* a full disk or a missing folder must never break the app */ }
+        catch (Exception)
+        { /* a full disk or a missing folder must never break the app */
+        }
     }
 
     private static void DeleteOld()
     {
         var limit = Now.Date.AddDays(-KeepDays);
         foreach (var file in Directory.EnumerateFiles(Folder, "vwap-*.log"))
-            if (File.GetLastWriteTimeUtc(file) < limit.ToUniversalTime()) File.Delete(file);
+            if (File.GetLastWriteTimeUtc(file) < limit.ToUniversalTime())
+                File.Delete(file);
     }
 
     /// <summary>Removes values of tokens, keys and secrets (JSON or query string form) so they never reach the file.</summary>
     public static string Redact(string text) => SecretPattern().Replace(text, "${name}${sep}***");
 
-    [GeneratedRegex("""(?<name>"?(?:access_token|public_token|refresh_token|enctoken|request_token|api_secret|api_key|checksum|secret)"?)(?<sep>\s*[:=]\s*"?)[^"&\s,}]+""", RegexOptions.IgnoreCase)]
+    [GeneratedRegex(
+        """(?<name>"?(?:access_token|public_token|refresh_token|enctoken|request_token|api_secret|api_key|checksum|secret)"?)(?<sep>\s*[:=]\s*"?)[^"&\s,}]+""",
+        RegexOptions.IgnoreCase
+    )]
     private static partial Regex SecretPattern();
 }

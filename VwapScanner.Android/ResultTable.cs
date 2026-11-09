@@ -8,6 +8,7 @@ namespace VwapScanner.Mobile;
 public sealed class ResultTable
 {
     public const int MaxRows = 500;
+
     /// <summary>Height of the data area in device-independent pixels (about eight rows); more rows scroll inside it, below the fixed header.</summary>
     public const double BodyHeight = 300;
     private static readonly Color HeaderTint = Color.FromRgba(128, 128, 128, 64);
@@ -36,7 +37,8 @@ public sealed class ResultTable
             Content = rows,
         };
         // A ScrollView does not shrink to its content by itself, so its height is set explicitly: as tall as the rows, up to BodyHeight (then they scroll).
-        rows.SizeChanged += (_, _) => body.HeightRequest = Math.Min(BodyHeight, Math.Max(rows.Height, 0));
+        rows.SizeChanged += (_, _) =>
+            body.HeightRequest = Math.Min(BodyHeight, Math.Max(rows.Height, 0));
         View = new ScrollView
         {
             Orientation = ScrollOrientation.Horizontal,
@@ -61,16 +63,23 @@ public sealed class ResultTable
             rows.Children.Add(row);
             added.Add(row);
         }
-        if (added.Count == 0) return;
-        foreach (var old in latest) old.BackgroundColor = Colors.Transparent;
+        if (added.Count == 0)
+            return;
+        foreach (var old in latest)
+            old.BackgroundColor = Colors.Transparent;
         latest.Clear();
         latest.AddRange(added);
-        while (rows.Children.Count > MaxRows) rows.Children.RemoveAt(0);
+        while (rows.Children.Count > MaxRows)
+            rows.Children.RemoveAt(0);
     }
 
     private Grid MakeRow(string[] cells, bool header)
     {
-        var grid = new Grid { ColumnSpacing = 0, BackgroundColor = header ? HeaderTint : Colors.Transparent };
+        var grid = new Grid
+        {
+            ColumnSpacing = 0,
+            BackgroundColor = header ? HeaderTint : Colors.Transparent,
+        };
         for (var i = 0; i < cells.Length; i++)
         {
             grid.ColumnDefinitions.Add(new ColumnDefinition(new GridLength(widths[i])));

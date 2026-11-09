@@ -36,10 +36,22 @@ public sealed class KiteClient : IDisposable
     private static Kite NewKite(string apiKey)
     {
         var kite = new Kite(apiKey, Timeout: TimeoutMs);
-        var field = typeof(Kite).GetField("httpClient", BindingFlags.Instance | BindingFlags.NonPublic);
+        var field = typeof(Kite).GetField(
+            "httpClient",
+            BindingFlags.Instance | BindingFlags.NonPublic
+        );
         if (field?.GetValue(kite) is not HttpClient original)
-            throw new ZerodhaException("Unsupported Kite client version: its HTTP client could not be replaced. Pin Tech.Zerodha.KiteConnect 5.0.0.");
-        field.SetValue(kite, new HttpClient(new SocketsHttpHandler()) { BaseAddress = original.BaseAddress, Timeout = TimeSpan.FromMilliseconds(TimeoutMs) });
+            throw new ZerodhaException(
+                "Unsupported Kite client version: its HTTP client could not be replaced. Pin Tech.Zerodha.KiteConnect 5.0.0."
+            );
+        field.SetValue(
+            kite,
+            new HttpClient(new SocketsHttpHandler())
+            {
+                BaseAddress = original.BaseAddress,
+                Timeout = TimeSpan.FromMilliseconds(TimeoutMs),
+            }
+        );
         original.Dispose();
         return kite;
     }
@@ -47,20 +59,59 @@ public sealed class KiteClient : IDisposable
     public static string LoginUrl(string apiKey) => new Kite(apiKey).GetLoginURL();
 
     /// <summary>Exchanges the single-use request token for an access token (needs the API secret).</summary>
-    public static async Task<string> ExchangeAsync(string apiKey, string apiSecret, string requestToken, CancellationToken ct)
+    public static async Task<string> ExchangeAsync(
+        string apiKey,
+        string apiSecret,
+        string requestToken,
+        CancellationToken ct
+    )
     {
         try
         {
-            var user = await Task.Run(() => NewKite(apiKey).GenerateSession(requestToken, apiSecret), ct);
-            return string.IsNullOrWhiteSpace(user.AccessToken) ? throw new ZerodhaException("Zerodha returned no access token.") : user.AccessToken;
+            var user = await Task.Run(
+                () => NewKite(apiKey).GenerateSession(requestToken, apiSecret),
+                ct
+            );
+            return string.IsNullOrWhiteSpace(user.AccessToken)
+                ? throw new ZerodhaException("Zerodha returned no access token.")
+                : user.AccessToken;
         }
-        catch (TokenException) { throw new ZerodhaException("Zerodha rejected the request token. It is single-use and short-lived: log in again."); }
-        catch (InputException) { throw new ZerodhaException("Zerodha rejected the login. Check the API key/secret and that http://127.0.0.1:9079/ is the app's redirect URL."); }
-        catch (KiteConnect.PermissionException) { throw new ZerodhaException("Zerodha denied the login for this API app."); }
-        catch (HttpRequestException e) { throw new ZerodhaException("Cannot reach Zerodha (api.kite.trade): " + e.Message + " Check the internet/DNS/VPN, then log in again (the request token is single-use)."); }
+        catch (TokenException)
+        {
+            throw new ZerodhaException(
+                "Zerodha rejected the request token. It is single-use and short-lived: log in again."
+            );
+        }
+        catch (InputException)
+        {
+            throw new ZerodhaException(
+                "Zerodha rejected the login. Check the API key/secret and that http://127.0.0.1:9079/ is the app's redirect URL."
+            );
+        }
+        catch (KiteConnect.PermissionException)
+        {
+            throw new ZerodhaException("Zerodha denied the login for this API app.");
+        }
+        catch (HttpRequestException e)
+        {
+            throw new ZerodhaException(
+                "Cannot reach Zerodha (api.kite.trade): "
+                    + e.Message
+                    + " Check the internet/DNS/VPN, then log in again (the request token is single-use)."
+            );
+        }
         catch (OperationCanceledException) when (!ct.IsCancellationRequested)
-        { throw new ZerodhaException("Zerodha (api.kite.trade) did not answer within 60 seconds. Check the internet/DNS/VPN/proxy, then open the login URL again (the request token is single-use)."); }
-        catch (KiteException e) { throw new ZerodhaException("Zerodha could not complete the token exchange: " + e.Message); }
+        {
+            throw new ZerodhaException(
+                "Zerodha (api.kite.trade) did not answer within 60 seconds. Check the internet/DNS/VPN/proxy, then open the login URL again (the request token is single-use)."
+            );
+        }
+        catch (KiteException e)
+        {
+            throw new ZerodhaException(
+                "Zerodha could not complete the token exchange: " + e.Message
+            );
+        }
     }
 
     private async Task<T> CallAsync<T>(Func<T> call, CancellationToken ct)
@@ -76,14 +127,42 @@ public sealed class KiteClient : IDisposable
                 next = start.AddMilliseconds(380);
                 wait = start - now;
             }
-            if (wait > TimeSpan.Zero) await Task.Delay(wait, ct);
-            try { return await Task.Run(call, ct); }
-            catch (TokenException e) { throw new ZerodhaAuthException("Zerodha rejected the access token (it expires every day). Run again with --login. " + e.Message); }
-            catch (NetworkException e) when (attempt < 3) { await Task.Delay(1000 * (attempt + 1), ct); _ = e; }
-            catch (NetworkException e) { throw new ZerodhaException("Zerodha network error: " + e.Message); }
-            catch (KiteException e) { throw new ZerodhaException("Zerodha: " + e.Message); }
-            catch (HttpRequestException e) { throw new ZerodhaException("Cannot reach Zerodha (api.kite.trade): " + e.Message); }
-            catch (OperationCanceledException) when (!ct.IsCancellationRequested) { throw new ZerodhaException("Cannot reach Zerodha (api.kite.trade): the request timed out."); }
+            if (wait > TimeSpan.Zero)
+                await Task.Delay(wait, ct);
+            try
+            {
+                return await Task.Run(call, ct);
+            }
+            catch (TokenException e)
+            {
+                throw new ZerodhaAuthException(
+                    "Zerodha rejected the access token (it expires every day). Run again with --login. "
+                        + e.Message
+                );
+            }
+            catch (NetworkException e) when (attempt < 3)
+            {
+                await Task.Delay(1000 * (attempt + 1), ct);
+                _ = e;
+            }
+            catch (NetworkException e)
+            {
+                throw new ZerodhaException("Zerodha network error: " + e.Message);
+            }
+            catch (KiteException e)
+            {
+                throw new ZerodhaException("Zerodha: " + e.Message);
+            }
+            catch (HttpRequestException e)
+            {
+                throw new ZerodhaException("Cannot reach Zerodha (api.kite.trade): " + e.Message);
+            }
+            catch (OperationCanceledException) when (!ct.IsCancellationRequested)
+            {
+                throw new ZerodhaException(
+                    "Cannot reach Zerodha (api.kite.trade): the request timed out."
+                );
+            }
         }
     }
 
@@ -96,24 +175,51 @@ public sealed class KiteClient : IDisposable
         var rows = await CallAsync(() => kite.GetInstruments("NSE"), ct);
         var result = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
         foreach (var i in rows)
-            if (i.InstrumentType == "EQ" && i.Segment == "NSE" && !string.IsNullOrWhiteSpace(i.TradingSymbol))
+            if (
+                i.InstrumentType == "EQ"
+                && i.Segment == "NSE"
+                && !string.IsNullOrWhiteSpace(i.TradingSymbol)
+            )
                 result[i.TradingSymbol] = (int)i.InstrumentToken;
         return result;
     }
 
     /// <summary>1-minute candles of one instrument between two IST instants, including the minute still forming (the caller drops it).</summary>
-    public async Task<List<Candle>> MinuteCandlesAsync(int token, DateTimeOffset from, DateTimeOffset to, CancellationToken ct)
+    public async Task<List<Candle>> MinuteCandlesAsync(
+        int token,
+        DateTimeOffset from,
+        DateTimeOffset to,
+        CancellationToken ct
+    )
     {
         var f = from.ToOffset(Ist).DateTime;
         var t = to.ToOffset(Ist).DateTime;
-        var rows = await CallAsync(() => kite.GetHistoricalData(token.ToString(CultureInfo.InvariantCulture), f, t, "minute"), ct);
-        return rows.Select(h => new Candle(ToIst(h.TimeStamp), h.Open, h.High, h.Low, h.Close, Convert.ToInt64(h.Volume, CultureInfo.InvariantCulture))).ToList();
+        var rows = await CallAsync(
+            () =>
+                kite.GetHistoricalData(
+                    token.ToString(CultureInfo.InvariantCulture),
+                    f,
+                    t,
+                    "minute"
+                ),
+            ct
+        );
+        return rows.Select(h => new Candle(
+                ToIst(h.TimeStamp),
+                h.Open,
+                h.High,
+                h.Low,
+                h.Close,
+                Convert.ToInt64(h.Volume, CultureInfo.InvariantCulture)
+            ))
+            .ToList();
     }
 
     // The client parses "+0530" timestamps into DateTimeKind.Local, so the instant is right on any machine time zone.
-    private static DateTimeOffset ToIst(DateTime stamp) => stamp.Kind == DateTimeKind.Unspecified
-        ? new DateTimeOffset(stamp, Ist)
-        : new DateTimeOffset(stamp).ToOffset(Ist);
+    private static DateTimeOffset ToIst(DateTime stamp) =>
+        stamp.Kind == DateTimeKind.Unspecified
+            ? new DateTimeOffset(stamp, Ist)
+            : new DateTimeOffset(stamp).ToOffset(Ist);
 
     public void Dispose() { }
 }

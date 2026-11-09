@@ -13,13 +13,21 @@ public sealed class AndroidReminderScheduler(AppConfig config) : IReminderSchedu
         try
         {
             var context = Android.App.Application.Context;
-            if (context.GetSystemService(Context.AlarmService) is not AlarmManager alarms) return;
+            if (context.GetSystemService(Context.AlarmService) is not AlarmManager alarms)
+                return;
             var intent = new Intent(context, typeof(ReminderReceiver));
             intent.SetAction(ActionReminder);
-            var pending = PendingIntent.GetBroadcast(context, 77, intent, PendingIntentFlags.Immutable | PendingIntentFlags.UpdateCurrent);
-            if (pending is null) return;
+            var pending = PendingIntent.GetBroadcast(
+                context,
+                77,
+                intent,
+                PendingIntentFlags.Immutable | PendingIntentFlags.UpdateCurrent
+            );
+            if (pending is null)
+                return;
             alarms.Cancel(pending);
-            if (config.ReminderTime is not { } time) return; // no time set: no reminder
+            if (config.ReminderTime is not { } time)
+                return; // no time set: no reminder
             var at = ReminderClock.Next(time, DateTimeOffset.UtcNow).ToUnixTimeMilliseconds();
             // Exact alarms need the "Alarms & reminders" permission on Android 12+; without it the reminder still fires, a few minutes late at worst.
             if (!OperatingSystem.IsAndroidVersionAtLeast(31) || alarms.CanScheduleExactAlarms())
@@ -27,12 +35,18 @@ public sealed class AndroidReminderScheduler(AppConfig config) : IReminderSchedu
             else
                 alarms.SetAndAllowWhileIdle(AlarmType.RtcWakeup, at, pending);
         }
-        catch (Exception) { /* scheduling is best effort; it is retried whenever the app opens */ }
+        catch (Exception)
+        { /* scheduling is best effort; it is retried whenever the app opens */
+        }
     }
 }
 
 /// <summary>Fires at the reminder time: shows the reminder unless auto-refresh is already running, then schedules the next one.</summary>
-[BroadcastReceiver(Name = "com.vijaykharde.vwapscanner.ReminderReceiver", Enabled = true, Exported = false)]
+[BroadcastReceiver(
+    Name = "com.vijaykharde.vwapscanner.ReminderReceiver",
+    Enabled = true,
+    Exported = false
+)]
 public class ReminderReceiver : BroadcastReceiver
 {
     public override void OnReceive(Context? context, Intent? intent)
@@ -43,25 +57,49 @@ public class ReminderReceiver : BroadcastReceiver
             var config = services?.GetService<AppConfig>();
             var notifier = services?.GetService<INotifier>();
             var coordinator = services?.GetService<ScanCoordinator>();
-            if (config is not null && notifier is not null && !(coordinator?.IsAutoActiveToday ?? false))
-                notifier.Remind("Time to start your VWAP scan", "Open the app to start auto-refresh and scan for signals.", config.ReminderSound, config.ReminderVibrate);
+            if (
+                config is not null
+                && notifier is not null
+                && !(coordinator?.IsAutoActiveToday ?? false)
+            )
+                notifier.Remind(
+                    "Time to start your VWAP scan",
+                    "Open the app to start auto-refresh and scan for signals.",
+                    config.ReminderSound,
+                    config.ReminderVibrate
+                );
         }
-        catch (Exception) { /* a failed reminder must not crash the app; the next one is scheduled below */ }
+        catch (Exception)
+        { /* a failed reminder must not crash the app; the next one is scheduled below */
+        }
         finally
         {
-            try { services?.GetService<IReminderScheduler>()?.Schedule(); } catch (Exception) { }
+            try
+            {
+                services?.GetService<IReminderScheduler>()?.Schedule();
+            }
+            catch (Exception) { }
         }
     }
 }
 
 /// <summary>Alarms are cleared by a reboot or an app update, so the reminder is scheduled again after either.</summary>
-[BroadcastReceiver(Name = "com.vijaykharde.vwapscanner.BootReceiver", Enabled = true, Exported = true)]
+[BroadcastReceiver(
+    Name = "com.vijaykharde.vwapscanner.BootReceiver",
+    Enabled = true,
+    Exported = true
+)]
 [IntentFilter(new[] { Intent.ActionBootCompleted, Intent.ActionMyPackageReplaced })]
 public class BootReceiver : BroadcastReceiver
 {
     public override void OnReceive(Context? context, Intent? intent)
     {
-        try { IPlatformApplication.Current?.Services.GetService<IReminderScheduler>()?.Schedule(); }
-        catch (Exception) { /* retried whenever the app opens */ }
+        try
+        {
+            IPlatformApplication.Current?.Services.GetService<IReminderScheduler>()?.Schedule();
+        }
+        catch (Exception)
+        { /* retried whenever the app opens */
+        }
     }
 }

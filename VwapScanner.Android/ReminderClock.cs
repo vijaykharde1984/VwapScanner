@@ -12,9 +12,11 @@ public static class ReminderClock
         for (var i = 0; i < 8; i++)
         {
             var day = today.AddDays(i);
-            if (day.DayOfWeek is DayOfWeek.Saturday or DayOfWeek.Sunday) continue;
+            if (day.DayOfWeek is DayOfWeek.Saturday or DayOfWeek.Sunday)
+                continue;
             var candidate = new DateTimeOffset(day.ToDateTime(at), Ist);
-            if (candidate > now) return candidate;
+            if (candidate > now)
+                return candidate;
         }
         throw new InvalidOperationException("No weekday found.");
     }
