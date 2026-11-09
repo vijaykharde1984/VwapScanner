@@ -130,6 +130,8 @@ public partial class MainPage : ContentPage
         });
 
     /// <summary>Redraws everything from the connection state and the coordinator (which keeps scanning while this page is not shown).</summary>
+    private string? shownStrategy; // strategy of the result currently on screen
+
     private void Refresh()
     {
         var connected = state.Connected;
@@ -165,6 +167,14 @@ public partial class MainPage : ContentPage
             shown = last;
             Show(last);
         }
+        var selected = config.Value("Scan:StrategyName");
+        if (selected.Length == 0)
+            selected = StrategyCatalog.ScalpVwap;
+        StrategyLabel.Text =
+            $"Strategy: {selected}"
+            + (shownStrategy is not null && !shownStrategy.Equals(selected, StringComparison.OrdinalIgnoreCase)
+                ? $" (results below are from {shownStrategy}; tap Scan now to use {selected})"
+                : "");
         SyncTables();
     }
 
@@ -413,15 +423,18 @@ public partial class MainPage : ContentPage
     {
         var scan = r.Scan;
         var plan = r.Plan;
+        shownStrategy = r.Strategy;
         var summary =
-            $"{scan.Date} as of {scan.AsOf} IST - {scan.Signals.Count} signal(s) in {scan.Scanned} stocks ({r.Universe})"
+            $"{scan.Date} as of {scan.AsOf} IST - {r.Strategy}: {scan.Signals.Count} signal(s) in {scan.Scanned} stocks ({r.Universe})"
             + (scan.Failed > 0 ? $", {scan.Failed} failed" : "")
             + (
                 scan.BenchmarkFilter ? ", NIFTY 50 downtrend filter on." : ", benchmark filter off."
             );
         if (scan.Message is not null)
             summary += "\n" + scan.Message;
-        if (scan.Diagnostics is { } d)
+        if (scan.DiagnosticsText is { } dt)
+            summary += "\n" + dt;
+        else if (scan.Diagnostics is { } d)
             summary +=
                 $"\nCandles checked {d.Evaluated} (not ready {d.NotReady}, NIFTY downtrend {d.BenchmarkBlocked}). Each test alone: below VWAP {d.BelowVwap}, turn-up {d.TurnUp}, "
                 + $"rel. volume {d.RelativeVolumeOk}, turnover {d.TurnoverOk}, target clears costs {d.TargetClearsCosts}, entry window {d.InEntryWindow}.";

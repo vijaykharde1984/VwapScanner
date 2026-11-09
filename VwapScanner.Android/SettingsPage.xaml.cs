@@ -79,7 +79,7 @@ public partial class SettingsPage : ContentPage
                 sw.Toggled += (_, _) => Revalidate();
                 return sw;
             case SettingKind.Choice:
-                var picker = new Picker { ItemsSource = def.Options };
+                var picker = new Picker { ItemsSource = def.Options, Title = def.Label };
                 picker.SelectedIndexChanged += (_, _) => Revalidate();
                 return picker;
             case SettingKind.ShortTime or SettingKind.Time:
@@ -240,6 +240,16 @@ public partial class SettingsPage : ContentPage
             if (Tm(values, "Scan:Strategy:EntryStart") >= Tm(values, "Scan:Strategy:LastEntry"))
             {
                 Show(Error("Scan:Strategy:LastEntry"), "Must be later than the first entry time.");
+                ok = false;
+            }
+            if (Tm(values, "Scan:Pullback:EntryStart") >= Tm(values, "Scan:Pullback:LastEntry"))
+            {
+                Show(Error("Scan:Pullback:LastEntry"), "Must be later than the first entry time.");
+                ok = false;
+            }
+            if (Dec(values, "Scan:Pullback:MinRiskAtr") >= Dec(values, "Scan:Pullback:MaxRiskAtr"))
+            {
+                Show(Error("Scan:Pullback:MaxRiskAtr"), "Must be larger than the min stop distance.");
                 ok = false;
             }
             if (values["Scan:At"].Length > 0 && values["Scan:Date"].Length == 0)

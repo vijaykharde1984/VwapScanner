@@ -1,8 +1,8 @@
 namespace VwapScanner;
 
-public sealed record ScanRequest(DateOnly? Date, TimeOnly? At, int Lookback, bool UseBenchmark, VwapOptions Options);
+public sealed record ScanRequest(DateOnly? Date, TimeOnly? At, int Lookback, bool UseBenchmark, VwapOptions Options, string StrategyName = StrategyCatalog.ScalpVwap, PullbackOptions? Pullback = null);
 
-public sealed record ScanResult(string Date, string AsOf, int Scanned, int Failed, bool BenchmarkFilter, string? Message, IReadOnlyList<VwapSignal> Signals, VwapDiagnostics? Diagnostics = null);
+public sealed record ScanResult(string Date, string AsOf, int Scanned, int Failed, bool BenchmarkFilter, string? Message, IReadOnlyList<VwapSignal> Signals, VwapDiagnostics? Diagnostics = null, string StrategyName = StrategyCatalog.ScalpVwap, string? DiagnosticsText = null);
 
 /// <summary>Runs only the ScalpVwap strategy over a list of stocks and returns only the stocks that signal.</summary>
 /// <summary>Completed 1-minute candles already downloaded, per instrument and day, so a repeat scan only fetches the new minutes.</summary>
@@ -70,6 +70,9 @@ public sealed class Scanner(KiteClient api, IReadOnlyDictionary<string, int> mas
             foreach (var c in bench) { benchState.Update(c); if (benchState.Downtrend) blocked.Add(c.Time); }
         }
 
+        var strategyName = StrategyCatalog.Normalize(req.StrategyName);
+        var pullbackDiagnostics = strategyName == StrategyCatalog.VwapPullback ? new PullbackDiagnostics() : null;
+        var newState = StrategyCatalog.Factory(strategyName, req, pullbackDiagnostics);
         var signals = new List<VwapSignal>();
         var diagnostics = new VwapDiagnostics();
         int scanned = 0, failed = 0;
@@ -82,17 +85,17 @@ public sealed class Scanner(KiteClient api, IReadOnlyDictionary<string, int> mas
             catch (ZerodhaException e) when (e is not ZerodhaAuthException && !e.Message.StartsWith("Cannot reach", StringComparison.Ordinal))
             { failed++; log?.Invoke($"  {symbol}: {e.Message}"); continue; }
             scanned++;
-            var state = new VwapState();
+            var state = newState();
             for (var i = 0; i < bars.Count; i++)
             {
                 state.Update(bars[i]);
                 if (i < bars.Count - req.Lookback) continue;
                 if (blocked.Contains(bars[i].Time)) { diagnostics.BenchmarkBlocked++; continue; }
-                if (state.Candidate(symbol, id, req.Options, diagnostics) is { } s) signals.Add(s);
+                if (state.Candidate(symbol, id, diagnostics) is { } s) signals.Add(s);
             }
             if (scanned % 25 == 0) log?.Invoke($"  scanned {scanned}/{list.Length}...");
         }
         var ordered = signals.OrderByDescending(s => s.BarTime).ThenByDescending(s => s.Score).ToList();
-        return new(D(), A(), scanned, failed, req.UseBenchmark, notes.Count == 0 ? null : string.Join(' ', notes), ordered, diagnostics);
+        return new(D(), A(), scanned, failed, req.UseBenchmark, notes.Count == 0 ? null : string.Join(' ', notes), ordered, diagnostics, strategyName, pullbackDiagnostics?.Describe(diagnostics.BenchmarkBlocked));
     }
 }

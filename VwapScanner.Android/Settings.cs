@@ -28,4 +28,9 @@ public sealed class ScanSettings
     /// <summary>HH:mm to evaluate as of that time; empty means now.</summary>
     public string? At { get; set; }
     public VwapOptions Strategy { get; set; } = new();
+
+    /// <summary>Which strategy runs: ScalpVwap (thresholds in <see cref="Strategy"/>) or VwapPullback (thresholds in <see cref="Pullback"/>). See StrategyCatalog.</summary>
+    public string StrategyName { get; set; } = StrategyCatalog.ScalpVwap;
+
+    public PullbackOptions Pullback { get; set; } = new();
 }

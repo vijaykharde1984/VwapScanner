@@ -33,6 +33,14 @@ public sealed record SettingDef(
     [
         new("Scan:Universe", "Stock list", SettingKind.Choice, "Scan", Options: Universe.Names),
         new(
+            "Scan:StrategyName",
+            "Strategy",
+            SettingKind.Choice,
+            "Scan",
+            "ScalpVwap buys a turn-up stretched below VWAP. VwapPullback buys the first confirmed bounce off VWAP in an uptrend. Each has its own thresholds below.",
+            Options: StrategyCatalog.Names
+        ),
+        new(
             "Scan:Lookback",
             "Lookback (candles)",
             SettingKind.Integer,
@@ -66,7 +74,7 @@ public sealed record SettingDef(
             "Scan:Strategy:MinStretchAtr",
             "Min stretch below VWAP (ATR)",
             SettingKind.Decimal,
-            "Strategy",
+            "ScalpVwap strategy",
             Min: 0,
             Max: 20
         ),
@@ -74,7 +82,7 @@ public sealed record SettingDef(
             "Scan:Strategy:MinRelativeVolume",
             "Min relative volume",
             SettingKind.Decimal,
-            "Strategy",
+            "ScalpVwap strategy",
             Min: 0,
             Max: 100
         ),
@@ -82,7 +90,7 @@ public sealed record SettingDef(
             "Scan:Strategy:MinBarTurnover",
             "Min bar turnover (INR)",
             SettingKind.Decimal,
-            "Strategy",
+            "ScalpVwap strategy",
             Min: 0,
             Max: 1000000000
         ),
@@ -90,7 +98,7 @@ public sealed record SettingDef(
             "Scan:Strategy:MinTargetBps",
             "Min target (bps)",
             SettingKind.Decimal,
-            "Strategy",
+            "ScalpVwap strategy",
             Min: 0,
             Max: 1000
         ),
@@ -98,7 +106,7 @@ public sealed record SettingDef(
             "Scan:Strategy:StopAtrMultiple",
             "Stop (ATR multiple)",
             SettingKind.Decimal,
-            "Strategy",
+            "ScalpVwap strategy",
             Min: 0.1m,
             Max: 20
         ),
@@ -106,7 +114,7 @@ public sealed record SettingDef(
             "Scan:Strategy:RewardRiskRatio",
             "Reward : risk",
             SettingKind.Decimal,
-            "Strategy",
+            "ScalpVwap strategy",
             Min: 0.1m,
             Max: 20
         ),
@@ -114,14 +122,160 @@ public sealed record SettingDef(
             "Scan:Strategy:EntryStart",
             "First entry time",
             SettingKind.Time,
-            "Strategy",
+            "ScalpVwap strategy",
             "HH:mm or HH:mm:ss"
         ),
         new(
             "Scan:Strategy:LastEntry",
             "Last entry time",
             SettingKind.Time,
-            "Strategy",
+            "ScalpVwap strategy",
+            "HH:mm or HH:mm:ss"
+        ),
+        new(
+            "Scan:Pullback:TrendBars",
+            "Trend window (candles)",
+            SettingKind.Integer,
+            "Pullback strategy",
+            "How many one-minute candles are used to judge the uptrend.",
+            Min: 10,
+            Max: 120
+        ),
+        new(
+            "Scan:Pullback:MinAboveVwapPercent",
+            "Min % of closes above VWAP",
+            SettingKind.Decimal,
+            "Pullback strategy",
+            "Share of the trend window that must have closed above VWAP.",
+            Min: 1,
+            Max: 100
+        ),
+        new(
+            "Scan:Pullback:MinVwapSlopeAtr",
+            "Min VWAP rise (ATR)",
+            SettingKind.Decimal,
+            "Pullback strategy",
+            "VWAP must have risen at least this many ATRs over the trend window.",
+            Min: 0,
+            Max: 20
+        ),
+        new(
+            "Scan:Pullback:SwingBars",
+            "Swing size (candles)",
+            SettingKind.Integer,
+            "Pullback strategy",
+            "Candles on each side that make a swing high or low (higher highs and higher lows are required).",
+            Min: 1,
+            Max: 10
+        ),
+        new(
+            "Scan:Pullback:PullbackBars",
+            "Pullback window (candles)",
+            SettingKind.Integer,
+            "Pullback strategy",
+            "The touch of VWAP must be within this many candles. Also the gap between two signals in one stock.",
+            Min: 2,
+            Max: 60
+        ),
+        new(
+            "Scan:Pullback:TouchAtr",
+            "VWAP touch distance (ATR)",
+            SettingKind.Decimal,
+            "Pullback strategy",
+            "A low this far above VWAP, or lower, counts as a touch.",
+            Min: 0,
+            Max: 5
+        ),
+        new(
+            "Scan:Pullback:MaxBreakAtr",
+            "Max dip below VWAP (ATR)",
+            SettingKind.Decimal,
+            "Pullback strategy",
+            "A low further below VWAP than this is a breakdown, not a pullback.",
+            Min: 0,
+            Max: 5
+        ),
+        new(
+            "Scan:Pullback:StopBufferAtr",
+            "Stop buffer (ATR)",
+            SettingKind.Decimal,
+            "Pullback strategy",
+            "Stop = lower of pullback low and VWAP, minus this many ATRs.",
+            Min: 0,
+            Max: 5
+        ),
+        new(
+            "Scan:Pullback:MinRiskAtr",
+            "Min stop distance (ATR)",
+            SettingKind.Decimal,
+            "Pullback strategy",
+            "Reject a stop closer than this.",
+            Min: 0.1m,
+            Max: 10
+        ),
+        new(
+            "Scan:Pullback:MaxRiskAtr",
+            "Max stop distance (ATR)",
+            SettingKind.Decimal,
+            "Pullback strategy",
+            "Reject a stop further than this.",
+            Min: 0.2m,
+            Max: 20
+        ),
+        new(
+            "Scan:Pullback:RewardRiskRatio",
+            "Reward : risk",
+            SettingKind.Decimal,
+            "Pullback strategy",
+            "Target distance as a multiple of the stop distance. The guide's minimum is 2.",
+            Min: 0.1m,
+            Max: 20
+        ),
+        new(
+            "Scan:Pullback:MinRoomRisk",
+            "Min room to day high (x risk)",
+            SettingKind.Decimal,
+            "Pullback strategy",
+            "The day's high must be at least this many stop distances above the entry.",
+            Min: 0,
+            Max: 20
+        ),
+        new(
+            "Scan:Pullback:MinTargetBps",
+            "Min target (bps)",
+            SettingKind.Decimal,
+            "Pullback strategy",
+            Min: 0,
+            Max: 1000
+        ),
+        new(
+            "Scan:Pullback:MinRelativeVolume",
+            "Min relative volume",
+            SettingKind.Decimal,
+            "Pullback strategy",
+            Min: 0,
+            Max: 100
+        ),
+        new(
+            "Scan:Pullback:MinBarTurnover",
+            "Min bar turnover (INR)",
+            SettingKind.Decimal,
+            "Pullback strategy",
+            Min: 0,
+            Max: 1000000000
+        ),
+        new(
+            "Scan:Pullback:EntryStart",
+            "First entry time",
+            SettingKind.Time,
+            "Pullback strategy",
+            "HH:mm or HH:mm:ss"
+        ),
+        new(
+            "Scan:Pullback:LastEntry",
+            "Last entry time",
+            SettingKind.Time,
+            "Pullback strategy",
             "HH:mm or HH:mm:ss"
         ),
         new(

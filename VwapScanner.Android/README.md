@@ -2,7 +2,7 @@
 
 .NET MAUI (Android) port of the VwapScanner web API in the sibling folder `..\VwapScanner.WebApi`. The web project is not modified by this app.
 
-Copied unchanged: `VwapStrategy.cs`, `Portfolio.cs`, `Scanner.cs`, `TokenStore.cs`. `Settings.cs` is a copy without the `Output` settings, and `Reporter.cs` is not copied: this app never writes CSV files by itself.
+Copied unchanged: `VwapStrategy.cs`, `Portfolio.cs`, `TokenStore.cs`. `Scanner.cs` and `Settings.cs` have diverged from the web project (strategy switch; `Settings.cs` also lacks the `Output` settings). `Reporter.cs` is not copied: this app never writes CSV files by itself.
 Adapted copies: `KiteClient.cs` (one exception type fully qualified), `ApiState.cs` (typed `RunResult` instead of an anonymous JSON object, progress callback),
 `Universe.cs` (reads the stock lists from the APK).
 New: `AppConfig.cs`, `MauiProgram.cs`, `App`, `MainPage`, `LoginPage`, `SettingsPage`, `Platforms/Android`.
@@ -47,3 +47,15 @@ Guard state while holding: `WATCH`, `ARMED`, `FADING`. Grid and CSV columns: `ex
 ## Stop Reprieve
 
 The stop column stays the one and only stop loss. When a dip touches the stop (a plain `EXIT_STOP`, not after the Reversal Guard armed) but the price is already back above it, and the day's VWAP is at least one buy-to-stop distance above the price, the Exit Monitor waits `App:StopReprieveMinutes` (default 15) instead of selling. While waiting, a completed 1-minute candle that closes at or below the stop sells at that close, and the target sells at once. The wait is also cancelled (sold at that close) when the price makes no progress: after as many lower closes in a row as set under Reversal Guard (default 3), or when by the half-way point the close is not above the price at the start of the wait. When the wait ends the normal rules apply again. One reprieve per position. A dip whose price is still at or below the stop, or with no room to the VWAP, sells at the stop immediately. Guard state while waiting: `REPRIEVE`; a notification is posted when it starts. Switch it off with `App:StopReprieveEnabled`.
+
+## Strategy switch
+Settings > Scan > Strategy chooses which strategy the scan runs (the Settings page lists the options; the change applies to the next scan):
+
+- **ScalpVwap** (default): the original mean-reversion VWAP scalp (`VwapStrategy.cs`, untouched).
+- **VwapPullback**: long-only VWAP trend pullback (`PullbackStrategy.cs`). It needs an established uptrend (most closes above VWAP, rising VWAP, EMA9 > EMA21, higher highs and lows), a pullback that touches VWAP, then a green confirmation candle. The stop sits below the pullback low or VWAP, and the target is 2R by default. Its options are under "Pullback strategy" in Settings (`Scan:Pullback:*` in `appsettings.json`).
+
+Notes:
+- Both strategies produce the same `VwapSignal`, so the optimizer, Exit Monitor, grids and CSV work unchanged. The scan summary is labelled with the strategy name.
+- For VwapPullback, `StretchAtr` is negative (the close is above VWAP) and `net_gain_at_vwap_inr` describes a downside scenario, since VWAP lies below the entry. Stop Reprieve is effectively inactive for it.
+- New strategies plug in through `StrategyCatalog` in `Strategies.cs` (implement `ISignalState`).
+- The signal logic was compiled and tested outside MAUI. Backtest before relying on it.

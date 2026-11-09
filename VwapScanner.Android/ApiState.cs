@@ -295,7 +295,10 @@ public sealed class ApiState(IConfiguration config, string contentRoot)
                 ? null
                 : TimeOnly.ParseExact(scan.At, "HH:mm", CultureInfo.InvariantCulture);
             limits.Validate();
-            request = new(date, at, scan.Lookback, scan.UseBenchmark, scan.Strategy);
+            var strategyName = StrategyCatalog.Normalize(scan.StrategyName);
+            if (strategyName == StrategyCatalog.VwapPullback)
+                scan.Pullback.Validate();
+            request = new(date, at, scan.Lookback, scan.UseBenchmark, scan.Strategy, strategyName, scan.Pullback);
         }
         catch (Exception e)
             when (e is ArgumentException or FormatException or InvalidOperationException)
@@ -329,7 +332,7 @@ public sealed class ApiState(IConfiguration config, string contentRoot)
             }
             var plan = PortfolioOptimizer.Optimize(candidates, limits);
             return new RunResult(
-                "ScalpVwap",
+                request.StrategyName,
                 scan.Symbols.Count > 0 ? "custom symbols" : scan.Universe,
                 result,
                 plan,
