@@ -249,10 +249,16 @@ public partial class SettingsPage : ContentPage
             }
             if (Dec(values, "Scan:Pullback:MinRiskAtr") >= Dec(values, "Scan:Pullback:MaxRiskAtr"))
             {
-                Show(Error("Scan:Pullback:MaxRiskAtr"), "Must be larger than the min stop distance.");
+                Show(
+                    Error("Scan:Pullback:MaxRiskAtr"),
+                    "Must be larger than the min stop distance."
+                );
                 ok = false;
             }
-            if (int.Parse(values["Scan:Indicators:EmaFast"]) >= int.Parse(values["Scan:Indicators:EmaSlow"]))
+            if (
+                int.Parse(values["Scan:Indicators:EmaFast"])
+                >= int.Parse(values["Scan:Indicators:EmaSlow"])
+            )
             {
                 Show(Error("Scan:Indicators:EmaSlow"), "Must be larger than the fast EMA period.");
                 ok = false;
@@ -386,6 +392,44 @@ public partial class SettingsPage : ContentPage
                 );
             }
         );
+
+    /// <summary>Clears downloaded candles, the saved instrument list and the temporary share copies. Portfolio, history and settings are kept.</summary>
+    private async void OnClearCache(object? sender, EventArgs e) =>
+        await Guard.Run(this, "Settings", () => OnClearCacheCore(sender, e));
+
+    private async Task OnClearCacheCore(object? sender, EventArgs e)
+    {
+        if (
+            !await DisplayAlertAsync(
+                "Clear cache",
+                "Delete the downloaded candles and the saved stock list, and download the stock list again? Your portfolio, history, settings and Zerodha login are not touched.",
+                "Clear",
+                "Cancel"
+            )
+        )
+            return;
+
+        // Temporary copies made for sharing the log or CSV files.
+        var removed = 0;
+        try
+        {
+            foreach (var file in Directory.GetFiles(FileSystem.CacheDirectory))
+            {
+                File.Delete(file);
+                removed++;
+            }
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        { /* a file in use is simply left behind */
+        }
+
+        var message = await coordinator.ClearCachesAsync();
+        await DisplayAlertAsync(
+            "Clear cache",
+            $"{message} Temporary files removed: {removed}.",
+            "OK"
+        );
+    }
 
     private async void OnReset(object? sender, EventArgs e) =>
         await Guard.Run(this, "Settings", () => OnResetCore(sender, e));

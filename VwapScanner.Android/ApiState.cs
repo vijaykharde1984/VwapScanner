@@ -11,7 +11,7 @@ public sealed class ApiState(IConfiguration config, string contentRoot)
     private readonly SemaphoreSlim gate = new(1, 1);
     private KiteClient? api;
     private IReadOnlyDictionary<string, int>? master;
-    private readonly CandleCache candles = new();
+    private CandleCache candles = new();
 
     public bool Connected => api is not null;
     public DateTime? ConnectedUtc { get; private set; }
@@ -35,6 +35,51 @@ public sealed class ApiState(IConfiguration config, string contentRoot)
                 "Zerodha:ApiKey is not set in appsettings.json / appsettings.Local.json."
             );
         return KiteClient.LoginUrl(key);
+    }
+
+    /// <summary>
+    /// Drops the downloaded candles and the saved instrument list, then downloads the instrument list again, so the next scan starts from fresh data.
+    /// Nothing the user needs is touched: portfolio, signals, history, settings and the Zerodha login are kept.
+    /// The Exit Monitor keeps the old instrument list until the new one is loaded, so it is never left without prices.
+    /// Returns a short message for the screen.
+    /// </summary>
+    public async Task<string> ClearCachesAsync(CancellationToken ct)
+    {
+        // Wait briefly for a running scan; a scan reads the cache and must not lose it half-way.
+        if (!await gate.WaitAsync(TimeSpan.FromSeconds(5), ct))
+            return "A scan is running right now. Try again when it has finished.";
+        try
+        {
+            candles = new CandleCache();
+
+            var path = Path.Combine(contentRoot, "instruments-nse.json");
+            try
+            {
+                if (File.Exists(path))
+                    File.Delete(path);
+            }
+            catch (IOException)
+            { /* the list is re-downloaded below anyway */
+            }
+
+            if (api is null)
+                return "Cache cleared. The instrument list is downloaded again after you log in to Zerodha.";
+
+            try
+            {
+                master = await LoadMasterAsync(api, ct);
+                return $"Cache cleared. The instrument list was downloaded again ({master.Count} stocks).";
+            }
+            catch (ZerodhaException e)
+            {
+                // Keep the old list in memory (if any) so the Exit Monitor keeps working; the next scan retries.
+                return $"Candle cache cleared, but the instrument list could not be downloaded now: {e.Message}";
+            }
+        }
+        finally
+        {
+            gate.Release();
+        }
     }
 
     public async Task RestoreAsync(CancellationToken ct)
@@ -299,8 +344,23 @@ public sealed class ApiState(IConfiguration config, string contentRoot)
             if (strategyName == StrategyCatalog.VwapPullback)
                 scan.Pullback.Validate();
             scan.Indicators.Validate();
-            (strategyName == StrategyCatalog.VwapPullback ? scan.PullbackFilters : scan.ScalpFilters).Validate(strategyName);
-            request = new(date, at, scan.Lookback, scan.UseBenchmark, scan.Strategy, strategyName, scan.Pullback, scan.Indicators, scan.ScalpFilters, scan.PullbackFilters);
+            (
+                strategyName == StrategyCatalog.VwapPullback
+                    ? scan.PullbackFilters
+                    : scan.ScalpFilters
+            ).Validate(strategyName);
+            request = new(
+                date,
+                at,
+                scan.Lookback,
+                scan.UseBenchmark,
+                scan.Strategy,
+                strategyName,
+                scan.Pullback,
+                scan.Indicators,
+                scan.ScalpFilters,
+                scan.PullbackFilters
+            );
         }
         catch (Exception e)
             when (e is ArgumentException or FormatException or InvalidOperationException)

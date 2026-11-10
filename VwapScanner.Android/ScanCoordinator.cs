@@ -865,6 +865,10 @@ public sealed class ScanCoordinator(
     /// <summary>What the last save attempt did, in words (shown by the Settings "test" button).</summary>
     public string LastSaveMessage { get; private set; } = "";
 
+    /// <summary>Clears the downloaded candles and the instrument list (see <see cref="ApiState.ClearCachesAsync"/>). Portfolio, history and settings are kept.</summary>
+    public Task<string> ClearCachesAsync(CancellationToken ct = default) =>
+        state.ClearCachesAsync(ct);
+
     /// <param name="force">Test run: ignores the time of day, the weekend, replay mode and the saved-today flag, and names the files "-test".</param>
     public async Task<bool> SaveDailyCsvIfDueAsync(bool force = false)
     {
