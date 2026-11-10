@@ -286,7 +286,7 @@ public partial class SettingsPage : ContentPage
         Show(SecretError, secretError);
         ok &= keyError is null && secretError is null;
 
-        SaveButton.IsEnabled = ok;
+        SaveItem.IsEnabled = ok;
         if (ok && good is not null)
             foreach (var def in SettingDef.All)
                 good.Add((def, values[def.Key]));

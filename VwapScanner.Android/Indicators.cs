@@ -34,8 +34,16 @@ public sealed class SignalFilterOptions
 
     public bool Any => UseSuperTrend || UseEma || UseRsi;
 
-    /// <summary>ScalpVwap buys weakness, so the RSI window defaults to oversold-ish values.</summary>
-    public static SignalFilterOptions ForScalp() => new() { MinRsi = 0m, MaxRsi = 40m };
+    /// <summary>ScalpVwap buys weakness, so the RSI window defaults to oversold-ish values. All three filters start enabled.</summary>
+    public static SignalFilterOptions ForScalp() =>
+        new()
+        {
+            UseSuperTrend = true,
+            UseEma = true,
+            UseRsi = true,
+            MinRsi = 0m,
+            MaxRsi = 40m,
+        };
 
     /// <summary>VwapPullback buys a dip inside an uptrend: not yet overbought, not collapsing.</summary>
     public static SignalFilterOptions ForPullback() => new() { MinRsi = 45m, MaxRsi = 75m };
